@@ -37,7 +37,7 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
 
   final static PropertyDescriptor MESSAGE_FIELDS = new PropertyDescriptor.Builder()
       .name("Message Fields").defaultValue(
-          "@odata.etag,id,createdDateTime,lastModifiedDateTime,changeKey,categories,receivedDateTime,sentDateTime,hasAttachments,internetMessageId,subject,bodyPreview,importance,parentFolderId,conversationId,isDeliveryReceiptRequested,isReadReceiptRequested,isRead,isDraft,webLink,inferenceClassification,body,sender,from,toRecipients,ccRecipients,bccRecipients,replyTo,flag")
+          "id,createdDateTime,lastModifiedDateTime,changeKey,categories,receivedDateTime,sentDateTime,hasAttachments,internetMessageId,subject,bodyPreview,importance,parentFolderId,conversationId,isDeliveryReceiptRequested,isReadReceiptRequested,isRead,isDraft,webLink,inferenceClassification,body,sender,from,toRecipients,ccRecipients,bccRecipients,replyTo,flag")
       .description("Message Fields to return from the Office 365 Graph API for Emails.  "
           + "If left blank, this will return all fields.  Examples: subject,body.content,sender,from,"
           + "toRecipients,ccRecipients").addValidator(StandardValidators.NON_BLANK_VALIDATOR).required(true)
@@ -93,7 +93,7 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
       {
         for (Attachment attachment: attachments)
         {
-          writeFlowFile(flowFile,session,attachment.getRawObject().getAsString());
+          writeFlowFile(flowFile,session,attachment.getRawObject().toString(),SUCCESS_ATTACHMENTS);
         }
       }
 
@@ -113,13 +113,13 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
 
   }
 
-  public static void writeFlowFile (FlowFile flowFile, ProcessSession session, String data)
+  public static void writeFlowFile (FlowFile flowFile, ProcessSession session, String data, Relationship rel)
   {
     FlowFile ff = session.create(flowFile);
     ff = session.write(ff, out -> {
       IOUtils.write(data, out, Charset.defaultCharset());
     });
-    session.transfer(ff, SUCCESS_MESSAGES);
+    session.transfer(ff, rel);
   }
 
   /*
@@ -143,7 +143,7 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
       {
         for (Message message : messages)
         {
-          writeFlowFile(flowFile,session,message.getRawObject().getAsString());
+          writeFlowFile(flowFile,session,message.getRawObject().toString(), SUCCESS_MESSAGES);
           loadAttachments(userId,message,graphClient,flowFile,session);
         }
       }
@@ -195,6 +195,10 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
       authProviderService = context.getProperty(SERVICE)
                                    .asControllerService(
                                        PontusMicrosoftGraphAuthControllerServiceInterface.class);
+    }
+    if (messageFields == null)
+    {
+      messageFields = context.getProperty(MESSAGE_FIELDS).evaluateAttributeExpressions(flowFile).getValue();
     }
 
     try

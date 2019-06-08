@@ -72,7 +72,7 @@ public class PontusMicrosoftGraphUserProcessor extends AbstractProcessor
   public static void writeFlowFile (FlowFile flowFile, ProcessSession session, User user)
   {
     FlowFile ff = session.create(flowFile);
-    final String data = user.getRawObject().getAsString();
+    final String data = user.getRawObject().toString();
     ff = session.write(ff, out -> IOUtils.write(data, out, Charset.defaultCharset()));
     ff = session.putAttribute(ff,OFFICE365_USER_ID, user.id);
     session.transfer(ff, SUCCESS);

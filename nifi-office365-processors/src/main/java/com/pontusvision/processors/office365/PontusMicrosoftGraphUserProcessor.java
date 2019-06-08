@@ -19,7 +19,7 @@ import org.apache.nifi.processor.util.StandardValidators;
 import java.nio.charset.Charset;
 import java.util.*;
 
-@Tags({ "GRAPH", "User", "Microsoft" }) @CapabilityDescription("Gets Office users, and adds the userID for each user"
+@Tags({ "GRAPH", "User", "Microsoft", "Office 365" }) @CapabilityDescription("Gets Office users, and adds the userID for each user"
     + " in the office365_user_id flow file attribute")
 public class PontusMicrosoftGraphUserProcessor extends AbstractProcessor
 {
@@ -27,12 +27,17 @@ public class PontusMicrosoftGraphUserProcessor extends AbstractProcessor
   private List<PropertyDescriptor> properties;
   private Set<Relationship>        relationships;
 
+  public static final String OFFICE365_USER_ID = "office365_user_id";
   private String                                             userFields = null;
   private PontusMicrosoftGraphAuthControllerServiceInterface authProviderService;
 
   final static PropertyDescriptor USER_FIELDS = new PropertyDescriptor.Builder()
-      .name("User Fields").defaultValue("").required(false)
-      .addValidator(StandardValidators.NON_EMPTY_VALIDATOR).build();
+      .name("User Fields").defaultValue("businessPhones,displayName,givenName,jobTitle,mail,mobilePhone,"
+          + "officeLocation,preferredLanguage,surname,userPrincipalName,id")
+      .description("User Fields to return from the Office 365 Graph API for Users.  "
+          + "Examples: businessPhones,displayName,givenName,"
+          + "jobTitle,mail,mobilePhone,officeLocation,preferredLanguage,surname,userPrincipalName,id"
+          + "toRecipients,ccRecipients").addValidator(StandardValidators.NON_BLANK_VALIDATOR).required(true).build();
 
   final static PropertyDescriptor SERVICE = new PropertyDescriptor.Builder()
       .name("Controller Service").displayName("Controller Service")
@@ -40,10 +45,13 @@ public class PontusMicrosoftGraphUserProcessor extends AbstractProcessor
       .identifiesControllerService(PontusMicrosoftGraphAuthControllerServiceInterface.class)
       .build();
 
-  public static final Relationship SUCCESS = new Relationship.Builder().name("SUCCESS")
+  public static final Relationship ORIGINAL = new Relationship.Builder().name("Original")
                                                                        .description("Success relationship").build();
 
-  public static final Relationship FAILURE = new Relationship.Builder().name("FAILURE")
+  public static final Relationship SUCCESS = new Relationship.Builder().name("Success")
+                                                                       .description("Success relationship").build();
+
+  public static final Relationship FAILURE = new Relationship.Builder().name("Failure")
                                                                        .description("Failure relationship").build();
 
   @Override public void init(final ProcessorInitializationContext context)
@@ -55,22 +63,33 @@ public class PontusMicrosoftGraphUserProcessor extends AbstractProcessor
     this.properties = Collections.unmodifiableList(properties);
 
     Set<Relationship> relationships = new HashSet<>();
-    relationships.add(FAILURE);
+    relationships.add(ORIGINAL);
     relationships.add(SUCCESS);
+    relationships.add(FAILURE);
     this.relationships = Collections.unmodifiableSet(relationships);
   }
+
+  public static void writeFlowFile (FlowFile flowFile, ProcessSession session, User user)
+  {
+    FlowFile ff = session.create(flowFile);
+    final String data = user.getRawObject().getAsString();
+    ff = session.write(ff, out -> IOUtils.write(data, out, Charset.defaultCharset()));
+    ff = session.putAttribute(ff,OFFICE365_USER_ID, user.id);
+    session.transfer(ff, SUCCESS);
+  }
+
 
   /*
    * Load users
    */
-  private List<String> loadUsers(IGraphServiceClient graphClient) throws Exception
+  private void loadUsers(IGraphServiceClient graphClient,
+                            FlowFile flowFile, ProcessSession session) throws Exception
   {
     IUserDeltaCollectionRequest request = graphClient.users()
                                                      .delta()
                                                      .buildRequest()
                                                      .select(userFields);
 
-    List<String> result = new ArrayList<String>();
 
     do
     {
@@ -81,7 +100,7 @@ public class PontusMicrosoftGraphUserProcessor extends AbstractProcessor
       {
         for (User user : users)
         {
-          result.add(user.id);
+          writeFlowFile(flowFile, session, user);
         }
       }
 
@@ -97,7 +116,6 @@ public class PontusMicrosoftGraphUserProcessor extends AbstractProcessor
     }
     while (request != null);
 
-    return result;
   }
 
   @Override public void onPropertyModified(final PropertyDescriptor descriptor, final String oldValue,
@@ -107,6 +125,7 @@ public class PontusMicrosoftGraphUserProcessor extends AbstractProcessor
     {
       userFields = newValue;
     }
+    authProviderService = null;
   }
 
   @Override public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException
@@ -128,20 +147,9 @@ public class PontusMicrosoftGraphUserProcessor extends AbstractProcessor
 
     try
     {
+      loadUsers(authProviderService.getService(), flowFile,session);
 
-      List<String> users = loadUsers(authProviderService.getService());
-
-      for (String userId : users)
-      {
-
-        flowFile = session.write(flowFile, out -> {
-          IOUtils.write(userId, out, Charset.defaultCharset());
-
-        });
-        flowFile = session.putAttribute(flowFile,"office365_user_id", userId);
-        session.transfer(flowFile, SUCCESS);
-
-      }
+      session.transfer (flowFile, ORIGINAL);
     }
     catch (Exception ex)
     {

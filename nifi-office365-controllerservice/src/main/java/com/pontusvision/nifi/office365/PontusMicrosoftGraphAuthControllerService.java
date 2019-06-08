@@ -60,6 +60,7 @@ import java.util.List;
                                                                                            .description(
                                                                                                "specifies the Oauth2 client Secret")
                                                                                            .required(true)
+                                                                                           .defaultValue("client_credentials")
                                                                                            .addValidator(
                                                                                                StandardValidators.NON_BLANK_VALIDATOR)
                                                                                            .build();
@@ -68,6 +69,7 @@ import java.util.List;
                                                                                       .description(
                                                                                           "specifies the Oauth2 client Secret")
                                                                                       .required(true)
+                                                                                      .defaultValue("https://graph.microsoft.com/.default")
                                                                                       .addValidator(
                                                                                           StandardValidators.NON_BLANK_VALIDATOR)
                                                                                       .build();

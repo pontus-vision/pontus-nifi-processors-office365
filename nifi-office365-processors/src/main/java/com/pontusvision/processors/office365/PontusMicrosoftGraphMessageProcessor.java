@@ -1,7 +1,10 @@
 package com.pontusvision.processors.office365;
 
+import com.microsoft.graph.models.extensions.Attachment;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.models.extensions.Message;
+import com.microsoft.graph.requests.extensions.IAttachmentCollectionPage;
+import com.microsoft.graph.requests.extensions.IAttachmentCollectionRequest;
 import com.microsoft.graph.requests.extensions.IMessageCollectionPage;
 import com.microsoft.graph.requests.extensions.IMessageCollectionRequest;
 import com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface;
@@ -9,168 +12,211 @@ import org.apache.commons.io.IOUtils;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.*;
 import org.apache.nifi.processor.exception.ProcessException;
-import org.apache.nifi.processor.io.InputStreamCallback;
-import org.apache.nifi.processor.io.OutputStreamCallback;
 import org.apache.nifi.processor.util.StandardValidators;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.util.*;
 
-@Tags({ "GRAPH", "Message", "Microsoft" }) @CapabilityDescription("Get messages")
+import static com.pontusvision.processors.office365.PontusMicrosoftGraphUserProcessor.OFFICE365_USER_ID;
 
-public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor {
+@Tags({ "GRAPH", "Message", "Microsoft", "Office 365" }) @CapabilityDescription("Get messages")
 
-    private List<PropertyDescriptor> properties;
-    private Set<Relationship> relationships;
+public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
+{
 
-    private String                                             messageFields = null;
-    private PontusMicrosoftGraphAuthControllerServiceInterface authProviderService;
+  private List<PropertyDescriptor> properties;
+  private Set<Relationship>        relationships;
 
-    final static PropertyDescriptor MESSAGE_FIELDS = new PropertyDescriptor.Builder()
-            .name("Message Fields").defaultValue("")
-            .description("Message Fields to return from the Office 365 Graph API for Emails.  "
-                + "If left blank, this will return all fields.  Examples: subject,body.content,sender,from,"
-                + "toRecipients,ccRecipients").required(true)
-            .build();
+  private String                                             messageFields = null;
+  private PontusMicrosoftGraphAuthControllerServiceInterface authProviderService;
 
-    final static PropertyDescriptor SERVICE = new PropertyDescriptor.Builder()
-            .name("Auththentication Controller Service").displayName("Authentication Controller Service")
-            .description("Controller Service to authenticate with Office 365 using oauth2").required(true)
-            .identifiesControllerService(PontusMicrosoftGraphAuthControllerServiceInterface.class)
-            .build();
+  final static PropertyDescriptor MESSAGE_FIELDS = new PropertyDescriptor.Builder()
+      .name("Message Fields").defaultValue(
+          "@odata.etag,id,createdDateTime,lastModifiedDateTime,changeKey,categories,receivedDateTime,sentDateTime,hasAttachments,internetMessageId,subject,bodyPreview,importance,parentFolderId,conversationId,isDeliveryReceiptRequested,isReadReceiptRequested,isRead,isDraft,webLink,inferenceClassification,body,sender,from,toRecipients,ccRecipients,bccRecipients,replyTo,flag")
+      .description("Message Fields to return from the Office 365 Graph API for Emails.  "
+          + "If left blank, this will return all fields.  Examples: subject,body.content,sender,from,"
+          + "toRecipients,ccRecipients").addValidator(StandardValidators.NON_BLANK_VALIDATOR).required(true)
+      .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
+      .build();
 
-    public static final Relationship SUCCESS = new Relationship.Builder().name("SUCCESS")
-            .description("Success relationship").build();
+  final static PropertyDescriptor SERVICE = new PropertyDescriptor.Builder()
+      .name("Auththentication Controller Service").displayName("Authentication Controller Service")
+      .description("Controller Service to authenticate with Office 365 using oauth2").required(true)
+      .identifiesControllerService(PontusMicrosoftGraphAuthControllerServiceInterface.class)
+      .build();
 
-    public static final Relationship FAILURE = new Relationship.Builder().name("FAILURE")
-            .description("Failure relationship").build();
+  public static final Relationship SUCCESS_MESSAGES = new Relationship.Builder().name("success_messages")
+                                                                       .description("Success relationship for messages").build();
 
+  public static final Relationship SUCCESS_ATTACHMENTS = new Relationship.Builder().name("success_attachments")
+                                                                       .description("Success relationship for attachments").build();
 
-    @Override public void init(final ProcessorInitializationContext context)
+  public static final Relationship ORIGINAL = new Relationship.Builder().name("original")
+                                                                       .description("Failure relationship").build();
+
+  public static final Relationship FAILURE = new Relationship.Builder().name("failure")
+                                                                       .description("Failure relationship").build();
+
+  @Override public void init(final ProcessorInitializationContext context)
+  {
+    List<PropertyDescriptor> properties = new ArrayList<>();
+    properties.add(SERVICE);
+    properties.add(MESSAGE_FIELDS);
+
+    this.properties = Collections.unmodifiableList(properties);
+
+    Set<Relationship> relationships = new HashSet<>();
+    relationships.add(FAILURE);
+    relationships.add(SUCCESS_MESSAGES);
+    relationships.add(SUCCESS_ATTACHMENTS);
+    relationships.add(ORIGINAL);
+    this.relationships = Collections.unmodifiableSet(relationships);
+  }
+
+  private void loadAttachments (String userId, Message message, IGraphServiceClient graphClient,
+                                FlowFile flowFile, ProcessSession session)
+  {
+
+    IAttachmentCollectionRequest request = graphClient.users(userId).messages(message.id).attachments()
+                                                            .buildRequest();
+    do
     {
-        List<PropertyDescriptor> properties = new ArrayList<>();
-        properties.add(MESSAGE_FIELDS);
-        properties.add(SERVICE);
+      IAttachmentCollectionPage page  = request.get();
+      List<Attachment>          attachments = page.getCurrentPage();
 
-        this.properties = Collections.unmodifiableList(properties);
-
-        Set<Relationship> relationships = new HashSet<>();
-        relationships.add(FAILURE);
-        relationships.add(SUCCESS);
-        this.relationships = Collections.unmodifiableSet(relationships);
-    }
-
-    /*
-     * Load Messages
-     */
-    private List<Message> loadMessages(String userId, IGraphServiceClient graphClient) throws Exception {
-        IMessageCollectionRequest request = graphClient
-                .users(userId)
-                .messages()
-                .buildRequest()
-                .select(messageFields);
-
-        List<Message> result = new ArrayList<Message>();
-
-        do {
-            IMessageCollectionPage page = request.get();
-            List<Message> messages = page.getCurrentPage();
-
-            if (messages != null && !messages.isEmpty()) {
-                for (Message message : messages) {
-                    result.add(message);
-                }
-            }
-
-            // Get next page request
-            if (page.getNextPage() != null) {
-                request = page.getNextPage().buildRequest();
-            } else {
-                request = null;
-            }
+      if (attachments != null && !attachments.isEmpty())
+      {
+        for (Attachment attachment: attachments)
+        {
+          writeFlowFile(flowFile,session,attachment.getRawObject().getAsString());
         }
-        while (request != null);
+      }
 
-        return result;
-    }
+      // Get next page request
+      if (page.getNextPage() != null)
+      {
+        request = page.getNextPage().buildRequest();
+      }
+      else
+      {
+        request = null;
+      }
+
+    }while (request != null);
 
 
-    @Override public void onPropertyModified(final PropertyDescriptor descriptor, final String oldValue,
-                                             final String newValue)
+
+  }
+
+  public static void writeFlowFile (FlowFile flowFile, ProcessSession session, String data)
+  {
+    FlowFile ff = session.create(flowFile);
+    ff = session.write(ff, out -> {
+      IOUtils.write(data, out, Charset.defaultCharset());
+    });
+    session.transfer(ff, SUCCESS_MESSAGES);
+  }
+
+  /*
+   * Load Messages
+   */
+  private void loadMessages(String userId,  IGraphServiceClient graphClient,
+                            FlowFile flowFile, ProcessSession session) throws Exception
+  {
+    IMessageCollectionRequest request = graphClient
+        .users(userId)
+        .messages()
+        .buildRequest()
+        .select(messageFields);
+
+    do
     {
-        if (descriptor.equals(MESSAGE_FIELDS)) {
-            messageFields = newValue;
+      IMessageCollectionPage page     = request.get();
+      List<Message>          messages = page.getCurrentPage();
+
+      if (messages != null && !messages.isEmpty())
+      {
+        for (Message message : messages)
+        {
+          writeFlowFile(flowFile,session,message.getRawObject().getAsString());
+          loadAttachments(userId,message,graphClient,flowFile,session);
         }
-    }
+      }
 
-    @Override public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException
+      // Get next page request
+      if (page.getNextPage() != null)
+      {
+        request = page.getNextPage().buildRequest();
+      }
+      else
+      {
+        request = null;
+      }
+    }
+    while (request != null);
+
+  }
+
+  @Override public void onPropertyModified(final PropertyDescriptor descriptor, final String oldValue,
+                                           final String newValue)
+  {
+    if (descriptor.equals(MESSAGE_FIELDS))
     {
-        final ComponentLog log = this.getLogger();
-        final FlowFile flowFile = session.get();
-
-        if (flowFile == null) {
-            return;
-        }
-
-        session.read(flowFile, new InputStreamCallback() {
-            @Override
-            public void process(InputStream in) throws IOException {
-                StringBuffer strbuf = new StringBuffer();
-
-                byte val = -1;
-                do {
-                    val = (byte) in.read();
-                    if (val >= 0)
-                    {
-                        strbuf.append((char)val);
-                    }
-
-                } while (val != '\n' && val != -1);
-
-                String userId = strbuf.toString();
-                FlowFile ff = session.create();
-
-                try {
-                    ff = session.write(ff, new OutputStreamCallback() {
-
-                        @Override
-                        public void process(OutputStream out) throws IOException {
-                            try {
-                                List<Message> messages = loadMessages(userId, authProviderService.getService());
-
-                                for (Message message : messages) {
-                                    IOUtils.write(message.body.content, out, Charset.defaultCharset());
-                                }
-                            } catch (Exception ex) {
-                                getLogger().error("Unable to read API", ex);
-                            }
-
-                        }
-                    });
-
-                    session.transfer(ff, SUCCESS);
-                } catch (ProcessException ex) {
-                    getLogger().error("Unable to process", ex);
-                    session.transfer(ff, FAILURE);
-                }
-            }
-        });
+      messageFields = newValue;
     }
+  }
 
-    @Override public Set<Relationship> getRelationships()
+  @Override public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException
+  {
+    FlowFile           flowFile = session.get();
+
+    if (flowFile == null)
     {
-        return relationships;
+      return;
     }
 
-    @Override public List<PropertyDescriptor> getSupportedPropertyDescriptors()
+    String userId = flowFile.getAttribute(OFFICE365_USER_ID);
+
+    if (userId == null)
     {
-        return properties;
+      getLogger().error("Unable to process flow File; must add the attribute " + OFFICE365_USER_ID);
+      session.transfer(flowFile, FAILURE);
+
+      return;
     }
+
+    if (authProviderService == null)
+    {
+      authProviderService = context.getProperty(SERVICE)
+                                   .asControllerService(
+                                       PontusMicrosoftGraphAuthControllerServiceInterface.class);
+    }
+
+    try
+    {
+      loadMessages(userId, authProviderService.getService(), flowFile, session);
+      session.transfer(flowFile, ORIGINAL);
+    }
+    catch (Exception ex)
+    {
+      getLogger().error("Unable to process", ex);
+      session.transfer(flowFile, FAILURE);
+    }
+
+  }
+
+  @Override public Set<Relationship> getRelationships()
+  {
+    return relationships;
+  }
+
+  @Override public List<PropertyDescriptor> getSupportedPropertyDescriptors()
+  {
+    return properties;
+  }
 }

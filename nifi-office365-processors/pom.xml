@@ -33,62 +33,29 @@
         <dependency>
             <groupId>com.pontusvision.office365</groupId>
             <artifactId>nifi-office365-api</artifactId>
-            <version>${nifi.version}</version>
         </dependency>
         <dependency>
             <groupId>org.json</groupId>
             <artifactId>json</artifactId>
-            <version>${json.version}</version>
         </dependency>
-
-        <!--<dependency>-->
-            <!--<groupId>com.force.api</groupId>-->
-            <!--<artifactId>force-wsc</artifactId>-->
-            <!--<version>46.1.0</version>-->
-        <!--</dependency>-->
-        <!--<dependency>-->
-            <!--<groupId>com.force.api</groupId>-->
-            <!--<artifactId>force-partner-api</artifactId>-->
-            <!--<version>46.1.0</version>-->
-        <!--</dependency>-->
 
 
         <dependency>
-            <groupId>com.pontusvision.office365</groupId>
-            <artifactId>force-rest-api</artifactId>
-            <version>${force-rest-api.version}</version>
-        </dependency>
-        <!-- CometD dependencies -->
-        <dependency>
-            <groupId>org.cometd.java</groupId>
-            <artifactId>bayeux-api</artifactId>
-            <version>${cometd.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.cometd.java</groupId>
-            <artifactId>cometd-java-client</artifactId>
-            <version>${cometd.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.cometd.java</groupId>
-            <artifactId>cometd-java-common</artifactId>
-            <version>${cometd.version}</version>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
         </dependency>
 
         <dependency>
             <groupId>org.apache.nifi</groupId>
             <artifactId>nifi-api</artifactId>
-            <version>1.9.2</version>
         </dependency>
         <dependency>
             <groupId>org.apache.nifi</groupId>
             <artifactId>nifi-processor-utils</artifactId>
-            <version>1.9.2</version>
         </dependency>
         <dependency>
             <groupId>org.apache.nifi</groupId>
             <artifactId>nifi-mock</artifactId>
-            <version>1.9.2</version>
             <scope>test</scope>
             <exclusions>
                 <exclusion>
@@ -110,7 +77,6 @@
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
-            <version>4.12</version>
             <scope>test</scope>
             <exclusions>
                 <exclusion>

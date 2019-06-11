@@ -14,3 +14,4 @@
 # limitations under the License.
 com.pontusvision.processors.office365.PontusMicrosoftGraphMessageProcessor
 com.pontusvision.processors.office365.PontusMicrosoftGraphUserProcessor
+com.pontusvision.processors.office365.PontusMicrosoftGraphMessageSendProcessor

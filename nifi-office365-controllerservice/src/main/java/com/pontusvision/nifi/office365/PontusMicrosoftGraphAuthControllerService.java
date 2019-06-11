@@ -54,6 +54,7 @@ import java.util.List;
   public final static PropertyDescriptor AUTH_CLIENT_SECRET = new PropertyDescriptor.Builder()
       .name("Auth client Secret")
       .description("specifies the Oauth2 client Secret").required(true)
+      .sensitive(true)
       .addValidator(StandardValidators.NON_BLANK_VALIDATOR).build();
 
   public final static PropertyDescriptor AUTH_GRANT_TYPE = new PropertyDescriptor.Builder().name("Auth Grant Type")

@@ -21,11 +21,23 @@ import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.controller.ControllerService;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
+
 @Tags({ "Pontus", "Microsoft", "Service", "Graph",
     "Auth" }) @CapabilityDescription("Microsoft Graph Auth Service.") public interface PontusMicrosoftGraphAuthControllerServiceInterface
     extends ControllerService
 {
 
   IGraphServiceClient getService();
+
+  public static String getStackTrace(Throwable e)
+  {
+    StringWriter sw = new StringWriter();
+    PrintWriter  pw = new PrintWriter(sw);
+    e.printStackTrace(pw);
+    return sw.toString();
+  }
+
 
 }

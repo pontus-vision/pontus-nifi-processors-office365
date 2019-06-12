@@ -14,7 +14,6 @@ import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.flowfile.FlowFile;
-import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.*;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
@@ -22,6 +21,7 @@ import org.apache.nifi.processor.util.StandardValidators;
 import java.nio.charset.Charset;
 import java.util.*;
 
+import static com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface.getStackTrace;
 import static com.pontusvision.processors.office365.PontusMicrosoftGraphUserProcessor.OFFICE365_USER_ID;
 
 @Tags({ "GRAPH", "Message", "Microsoft", "Office 365" }) @CapabilityDescription("Get messages")
@@ -51,13 +51,17 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
       .build();
 
   public static final Relationship SUCCESS_MESSAGES = new Relationship.Builder().name("success_messages")
-                                                                       .description("Success relationship for messages").build();
+                                                                                .description(
+                                                                                    "Success relationship for messages")
+                                                                                .build();
 
   public static final Relationship SUCCESS_ATTACHMENTS = new Relationship.Builder().name("success_attachments")
-                                                                       .description("Success relationship for attachments").build();
+                                                                                   .description(
+                                                                                       "Success relationship for attachments")
+                                                                                   .build();
 
-  public static final Relationship ORIGINAL = new Relationship.Builder().name("original")
-                                                                       .description("Failure relationship").build();
+  //  public static final Relationship ORIGINAL = new Relationship.Builder().name("original")
+  //                                                                       .description("Failure relationship").build();
 
   public static final Relationship FAILURE = new Relationship.Builder().name("failure")
                                                                        .description("Failure relationship").build();
@@ -74,26 +78,26 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
     relationships.add(FAILURE);
     relationships.add(SUCCESS_MESSAGES);
     relationships.add(SUCCESS_ATTACHMENTS);
-    relationships.add(ORIGINAL);
+    //    relationships.add(ORIGINAL);
     this.relationships = Collections.unmodifiableSet(relationships);
   }
 
-  private void loadAttachments (String userId, Message message, IGraphServiceClient graphClient,
-                                FlowFile flowFile, ProcessSession session)
+  private void loadAttachments(String userId, Message message, IGraphServiceClient graphClient,
+                               FlowFile flowFile, ProcessSession session)
   {
 
     IAttachmentCollectionRequest request = graphClient.users(userId).messages(message.id).attachments()
-                                                            .buildRequest();
+                                                      .buildRequest();
     do
     {
-      IAttachmentCollectionPage page  = request.get();
+      IAttachmentCollectionPage page        = request.get();
       List<Attachment>          attachments = page.getCurrentPage();
 
       if (attachments != null && !attachments.isEmpty())
       {
-        for (Attachment attachment: attachments)
+        for (Attachment attachment : attachments)
         {
-          writeFlowFile(flowFile,session,attachment.getRawObject().toString(),SUCCESS_ATTACHMENTS);
+          writeFlowFile(flowFile, session, attachment.getRawObject().toString(), SUCCESS_ATTACHMENTS);
         }
       }
 
@@ -107,13 +111,11 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
         request = null;
       }
 
-    }while (request != null);
-
-
+    } while (request != null);
 
   }
 
-  public static void writeFlowFile (FlowFile flowFile, ProcessSession session, String data, Relationship rel)
+  public static void writeFlowFile(FlowFile flowFile, ProcessSession session, String data, Relationship rel)
   {
     FlowFile ff = session.create(flowFile);
     ff = session.write(ff, out -> {
@@ -125,13 +127,13 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
   /*
    * Load Messages
    */
-  private void loadMessages(String userId,  IGraphServiceClient graphClient,
-                            FlowFile flowFile, ProcessSession session) throws Exception
+  private void loadMessages(String userId, IGraphServiceClient graphClient,
+                            Map<String, String> attribs, ProcessSession session) throws Exception
   {
     IMessageCollectionRequest request = graphClient
         .users(userId)
         .messages()
-        .buildRequest()
+        .buildRequest().top(10)
         .select(messageFields);
 
     do
@@ -143,8 +145,12 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
       {
         for (Message message : messages)
         {
-          writeFlowFile(flowFile,session,message.getRawObject().toString(), SUCCESS_MESSAGES);
-          loadAttachments(userId,message,graphClient,flowFile,session);
+          FlowFile flowFile = session.create();
+          flowFile = session.putAllAttributes(flowFile, attribs);
+          loadAttachments(userId, message, graphClient, flowFile, session);
+          writeFlowFile(flowFile, session, message.getRawObject().toString(), SUCCESS_MESSAGES);
+          session.remove(flowFile);
+          session.commit();
         }
       }
 
@@ -173,12 +179,14 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
 
   @Override public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException
   {
-    FlowFile           flowFile = session.get();
+    FlowFile flowFile = session.get();
 
     if (flowFile == null)
     {
       return;
     }
+
+    Map<String, String> attributes = flowFile.getAttributes();
 
     String userId = flowFile.getAttribute(OFFICE365_USER_ID);
 
@@ -196,23 +204,30 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
                                    .asControllerService(
                                        PontusMicrosoftGraphAuthControllerServiceInterface.class);
     }
-    if (messageFields == null)
-    {
-      messageFields = context.getProperty(MESSAGE_FIELDS).evaluateAttributeExpressions(flowFile).getValue();
-    }
+
+    messageFields = context.getProperty(MESSAGE_FIELDS).evaluateAttributeExpressions(flowFile).getValue();
 
     try
     {
-      loadMessages(userId, authProviderService.getService(), flowFile, session);
-      session.transfer(flowFile, ORIGINAL);
+      session.remove(flowFile);
+
+      loadMessages(userId, authProviderService.getService(), attributes, session);
+      //      session.transfer(flowFile, ORIGINAL);
     }
     catch (Exception ex)
     {
       getLogger().error("Unable to process", ex);
+      flowFile = session.create();
+      flowFile = session.putAllAttributes(flowFile,attributes);
+
+      flowFile = session.putAttribute(flowFile,"Office365.MessageProcessor.Error", ex.getMessage());
+      flowFile = session.putAttribute(flowFile,"Office365.MessageProcessor.StackTrace", getStackTrace(ex));
+
       session.transfer(flowFile, FAILURE);
     }
 
   }
+
 
   @Override public Set<Relationship> getRelationships()
   {

@@ -129,7 +129,7 @@ public class PontusMicrosoftGraphMessageSendProcessor extends AbstractProcessor
 
 
   public final static String             IMPORTANCE_DEFAULT = "Normal";
-  public final static String             IMPORTANCE_NAME    = "BCC Email Addresses";
+  public final static String             IMPORTANCE_NAME    = "Importance";
   public final static PropertyDescriptor IMPORTANCE         = new PropertyDescriptor.Builder()
       .name(IMPORTANCE_NAME).displayName(IMPORTANCE_NAME)
       .description("This has a comma-separated list of e-mail 'Blind Carbon-copy (bcc)'  recipients.").required(true)
@@ -169,14 +169,7 @@ public class PontusMicrosoftGraphMessageSendProcessor extends AbstractProcessor
     this.relationships = Collections.unmodifiableSet(relationships);
   }
 
-  public static void writeFlowFile(FlowFile flowFile, ProcessSession session, String data, Relationship rel)
-  {
-    FlowFile ff = session.create(flowFile);
-    ff = session.write(ff, out -> {
-      IOUtils.write(data, out, Charset.defaultCharset());
-    });
-    session.transfer(ff, rel);
-  }
+
 
   public static List<Recipient> getRecipientsList(String recipientsCSV)
   {
@@ -207,6 +200,7 @@ public class PontusMicrosoftGraphMessageSendProcessor extends AbstractProcessor
     {
       final StringBuilder bodySb = new StringBuilder();
       session.read(flowFile, in -> bodySb.append(IOUtils.toString(in, Charset.defaultCharset())));
+      return bodySb.toString();
     }
 
     return body;

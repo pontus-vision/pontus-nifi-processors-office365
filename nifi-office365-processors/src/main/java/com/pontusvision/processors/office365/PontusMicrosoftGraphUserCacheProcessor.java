@@ -95,8 +95,7 @@ public class PontusMicrosoftGraphUserCacheProcessor extends PontusMicrosoftGraph
                     writeFlowFile(ff, session, deltaLink, SUCCESS);
                 }
             }
-        }
-        while (request != null);
+        }while (request != null);
 
     }
 

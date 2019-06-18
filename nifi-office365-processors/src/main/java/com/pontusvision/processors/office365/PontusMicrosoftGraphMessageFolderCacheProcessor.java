@@ -54,7 +54,7 @@ public class PontusMicrosoftGraphMessageFolderCacheProcessor extends PontusMicro
                               FlowFile flowFile, ProcessSession session, String delta) throws Exception
     {
         IMailFolderDeltaCollectionRequest request;
-        if (delta != null) {
+        if (delta != null && delta.trim().length() > 0) {
             request = graphClient
                     .users(userId)
                     .mailFolders()

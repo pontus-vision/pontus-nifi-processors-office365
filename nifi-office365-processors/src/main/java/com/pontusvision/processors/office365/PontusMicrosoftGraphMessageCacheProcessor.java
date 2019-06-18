@@ -64,6 +64,7 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
         relationships.add(FAILURE);
         relationships.add(SUCCESS_MESSAGES);
         relationships.add(SUCCESS_ATTACHMENTS);
+
         this.relationships = Collections.unmodifiableSet(relationships);
     }
 
@@ -82,7 +83,8 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
             {
                 for (Attachment attachment : attachments)
                 {
-                    writeFlowFile(flowFile, session, attachment.getRawObject().toString(), SUCCESS_ATTACHMENTS);
+                    FlowFile ff = session.create(flowFile);
+                    writeFlowFile(ff, session, attachment.getRawObject().toString(), SUCCESS_ATTACHMENTS);
                 }
             }
 
@@ -107,7 +109,7 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
                               FlowFile flowFile, ProcessSession session, String delta) throws Exception
     {
         IMessageDeltaCollectionRequest request;
-        if (delta != null) {
+        if (delta != null && delta.trim().length() > 0) {
             request = graphClient
                     .users(userId)
                     .mailFolders(folderId)
@@ -135,7 +137,7 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
             {
                 for (Message message : messages)
                 {
-                    FlowFile ff = session.create();
+                    FlowFile ff = session.create(flowFile);
                     loadAttachments(userId, message, graphClient, ff, session);
                     ff = session.putAttribute(ff, OFFICE365_USER_ID, userId);
                     ff = session.putAttribute(ff, OFFICE365_FOLDER_ID, folderId);
@@ -173,6 +175,50 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
         if (descriptor.equals(MESSAGE_FIELDS))
         {
             messageFields = newValue;
+        }
+    }
+
+    @Override public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException
+    {
+        FlowFile flowFile = session.get();
+        if (flowFile == null)
+        {
+            flowFile = session.create();
+        }
+
+        session.remove(flowFile);
+
+        try
+        {
+            Set<String> keys = cacheClient.keySet(deserializer);
+
+            long counter = 0;
+
+            for (String key : keys)
+            {
+                if (cacheFilterRegex.matcher(key).matches())
+                {
+                    counter++;
+                    process(context, session, flowFile, key, cacheClient.get(key, serializer, deserializer));
+                }
+            }
+            if (counter == 0)
+            {
+                process(context, session, flowFile);
+            }
+
+//            session.transfer(flowFile, ORIGINAL);
+        }
+        catch (Exception ex)
+        {
+            getLogger().error("Unable to process", ex);
+
+            session.remove(flowFile);
+
+            flowFile = session.create();
+            flowFile = session.putAttribute(flowFile, "Office365.Error", ex.getMessage());
+            flowFile = session.putAttribute(flowFile, "Office365.StackTrace", getStackTrace(ex));
+            session.transfer(flowFile, FAILURE);
         }
     }
 

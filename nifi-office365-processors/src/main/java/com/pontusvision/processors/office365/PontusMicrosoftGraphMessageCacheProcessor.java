@@ -3,7 +3,10 @@ package com.pontusvision.processors.office365;
 import com.microsoft.graph.models.extensions.Attachment;
 import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.models.extensions.Message;
-import com.microsoft.graph.requests.extensions.*;
+import com.microsoft.graph.requests.extensions.IAttachmentCollectionPage;
+import com.microsoft.graph.requests.extensions.IAttachmentCollectionRequest;
+import com.microsoft.graph.requests.extensions.IMessageDeltaCollectionPage;
+import com.microsoft.graph.requests.extensions.IMessageDeltaCollectionRequest;
 import com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface;
 import org.apache.commons.io.IOUtils;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
@@ -17,22 +20,17 @@ import org.apache.nifi.processor.util.StandardValidators;
 
 import java.nio.charset.Charset;
 import java.util.*;
+import java.util.regex.Pattern;
 
 import static com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface.getStackTrace;
-import static com.pontusvision.processors.office365.PontusMicrosoftGraphUserProcessor.OFFICE365_USER_ID;
 import static com.pontusvision.processors.office365.PontusMicrosoftGraphMessageFolderDeltaProcessor.OFFICE365_FOLDER_ID;
+import static com.pontusvision.processors.office365.PontusMicrosoftGraphUserProcessor.OFFICE365_USER_ID;
 
 @Tags({ "GRAPH", "Message", "Microsoft", "Office 365" }) @CapabilityDescription("Get messages")
 
-public class PontusMicrosoftGraphMessageDeltaProcessor extends AbstractProcessor
+public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGraphBaseProcessor
 {
-
-    private List<PropertyDescriptor> properties;
-    private Set<Relationship>        relationships;
-
     private String messageFields = null;
-    private String deltaField = null;
-    private PontusMicrosoftGraphAuthControllerServiceInterface authProviderService;
 
     final static PropertyDescriptor MESSAGE_FIELDS = new PropertyDescriptor.Builder()
             .name("Message Fields").defaultValue(
@@ -42,17 +40,6 @@ public class PontusMicrosoftGraphMessageDeltaProcessor extends AbstractProcessor
                     + "toRecipients,ccRecipients").addValidator(StandardValidators.NON_BLANK_VALIDATOR).required(true)
             .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
             .build();
-
-    final static PropertyDescriptor SERVICE = new PropertyDescriptor.Builder()
-            .name("Auththentication Controller Service").displayName("Authentication Controller Service")
-            .description("Controller Service to authenticate with Office 365 using oauth2").required(true)
-            .identifiesControllerService(PontusMicrosoftGraphAuthControllerServiceInterface.class)
-            .build();
-
-    final static PropertyDescriptor DELTA_FIELD_NAME = new PropertyDescriptor.Builder()
-            .name("Delta Field Name").defaultValue("")
-            .description("Delta field name").addValidator(StandardValidators.NON_BLANK_VALIDATOR).required(false).build();
-
 
     public static final Relationship SUCCESS_MESSAGES = new Relationship.Builder().name("success_messages")
             .description(
@@ -64,22 +51,12 @@ public class PontusMicrosoftGraphMessageDeltaProcessor extends AbstractProcessor
                     "Success relationship for attachments")
             .build();
 
-    public static final Relationship DELTA = new Relationship.Builder().name("Delta")
-            .description("Delta relationship").build();
-
-
-    //  public static final Relationship ORIGINAL = new Relationship.Builder().name("original")
-    //                                                                       .description("Failure relationship").build();
-
-    public static final Relationship FAILURE = new Relationship.Builder().name("failure")
-            .description("Failure relationship").build();
-
     @Override public void init(final ProcessorInitializationContext context)
     {
-        List<PropertyDescriptor> properties = new ArrayList<>();
-        properties.add(SERVICE);
+        super.init(context);
+
+        List<PropertyDescriptor> properties = new ArrayList<>(this.properties);
         properties.add(MESSAGE_FIELDS);
-        properties.add(DELTA_FIELD_NAME);
 
         this.properties = Collections.unmodifiableList(properties);
 
@@ -87,8 +64,6 @@ public class PontusMicrosoftGraphMessageDeltaProcessor extends AbstractProcessor
         relationships.add(FAILURE);
         relationships.add(SUCCESS_MESSAGES);
         relationships.add(SUCCESS_ATTACHMENTS);
-        relationships.add(DELTA);
-        //    relationships.add(ORIGINAL);
         this.relationships = Collections.unmodifiableSet(relationships);
     }
 
@@ -125,28 +100,19 @@ public class PontusMicrosoftGraphMessageDeltaProcessor extends AbstractProcessor
 
     }
 
-    public static void writeFlowFile(FlowFile flowFile, ProcessSession session, String data, Relationship rel)
-    {
-        FlowFile ff = session.create(flowFile);
-        ff = session.write(ff, out -> {
-            IOUtils.write(data, out, Charset.defaultCharset());
-        });
-        session.transfer(ff, rel);
-    }
-
     /*
      * Load Messages
      */
     private void loadMessages(String userId, String folderId, IGraphServiceClient graphClient,
-                              Map<String, String> attribs, ProcessSession session, String deltaToken) throws Exception
+                              FlowFile flowFile, ProcessSession session, String delta) throws Exception
     {
         IMessageDeltaCollectionRequest request;
-        if (deltaToken != null) {
+        if (delta != null) {
             request = graphClient
                     .users(userId)
                     .mailFolders(folderId)
                     .messages()
-                    .delta(deltaToken)
+                    .delta(delta)
                     .buildRequest().top(10)
                     .select(messageFields);
         } else {
@@ -169,11 +135,12 @@ public class PontusMicrosoftGraphMessageDeltaProcessor extends AbstractProcessor
             {
                 for (Message message : messages)
                 {
-                    FlowFile flowFile = session.create();
-                    flowFile = session.putAllAttributes(flowFile, attribs);
-                    loadAttachments(userId, message, graphClient, flowFile, session);
-                    writeFlowFile(flowFile, session, message.getRawObject().toString(), SUCCESS_MESSAGES);
-                    session.remove(flowFile);
+                    FlowFile ff = session.create();
+                    loadAttachments(userId, message, graphClient, ff, session);
+                    ff = session.putAttribute(ff, OFFICE365_USER_ID, userId);
+                    ff = session.putAttribute(ff, OFFICE365_FOLDER_ID, folderId);
+                    ff = session.putAttribute(ff, OFFICE365_MESSAGE_ID,  message.id);
+                    writeFlowFile(ff, session, message.getRawObject().toString(), SUCCESS_MESSAGES);
                     session.commit();
                 }
             }
@@ -186,12 +153,14 @@ public class PontusMicrosoftGraphMessageDeltaProcessor extends AbstractProcessor
             else
             {
                 request = null;
-                String token = page.deltaLink();
-                FlowFile ff = session.create();
-                ff = session.putAttribute(ff,OFFICE365_USER_ID, userId);
-                ff = session.putAttribute(ff,OFFICE365_FOLDER_ID, folderId);
-                ff = session.write(ff, out -> IOUtils.write(token, out, Charset.defaultCharset()));
-                session.transfer(ff, DELTA);
+                String deltaLink = page.deltaLink();
+                if (!deltaLink.equals(delta)) {
+                    FlowFile ff = session.create(flowFile);
+                    ff = session.putAttribute(ff, OFFICE365_DELTA_VALUE, deltaLink);
+                    ff = session.putAttribute(ff, OFFICE365_DELTA_KEY,
+                            String.format(OFFICE365_DELTA_KEY_FORMAT_MESSAGE, userId, folderId));
+                    writeFlowFile(ff, session, deltaLink, SUCCESS_MESSAGES);
+                }
             }
         }
         while (request != null);
@@ -205,86 +174,24 @@ public class PontusMicrosoftGraphMessageDeltaProcessor extends AbstractProcessor
         {
             messageFields = newValue;
         }
-        if (descriptor.equals(DELTA_FIELD_NAME))
-        {
-            deltaField = newValue;
-        }
     }
 
-    @Override public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException
-    {
-        FlowFile flowFile = session.get();
+    @Override
+    public void process(ProcessContext context, ProcessSession session, FlowFile flowFile, String key, String delta) throws Exception {
 
-        if (flowFile == null)
-        {
-            return;
-        }
-
-        Map<String, String> attributes = flowFile.getAttributes();
-
-        String userId = flowFile.getAttribute(OFFICE365_USER_ID);
-        if (userId == null)
-        {
-            getLogger().error("Unable to process flow File; must add the attribute " + OFFICE365_USER_ID);
-            session.transfer(flowFile, FAILURE);
-
-            return;
-        }
-
-        String folderId = flowFile.getAttribute(OFFICE365_FOLDER_ID);
-        if (folderId == null)
-        {
-            getLogger().error("Unable to process flow File; must add the attribute " + OFFICE365_FOLDER_ID);
-            session.transfer(flowFile, FAILURE);
-
-            return;
-        }
-
-        if (authProviderService == null)
-        {
-            authProviderService = context.getProperty(SERVICE)
-                    .asControllerService(
-                            PontusMicrosoftGraphAuthControllerServiceInterface.class);
-        }
-
-        String deltaToken = flowFile.getAttribute(deltaField);
-        messageFields = context.getProperty(MESSAGE_FIELDS).evaluateAttributeExpressions(flowFile).getValue();
+        String[] fields = key.split(Pattern.quote("|"));
+        String userId = fields[1];
+        String folderId = fields[2];
 
         try
         {
-            session.remove(flowFile);
-
-            loadMessages(userId, folderId, authProviderService.getService(), attributes, session, deltaToken);
-            //      session.transfer(flowFile, ORIGINAL);
+            loadMessages(userId, folderId, authProviderService.getService(), flowFile, session, delta);
         }
         catch (Exception ex)
         {
-            try {
-                authProviderService.refreshToken();
-                loadMessages(userId, folderId, authProviderService.getService(), attributes, session, deltaToken);
-            }
-            catch (Exception e) {
-                getLogger().error("Unable to process", ex);
-                flowFile = session.create();
-                flowFile = session.putAllAttributes(flowFile,attributes);
-
-                flowFile = session.putAttribute(flowFile,"Office365.MessageProcessor.Error", ex.getMessage());
-                flowFile = session.putAttribute(flowFile,"Office365.MessageProcessor.StackTrace", getStackTrace(ex));
-
-                session.transfer(flowFile, FAILURE);
-            }
+            authProviderService.refreshToken();
+            loadMessages(userId, folderId, authProviderService.getService(), flowFile, session, delta);
         }
-
     }
 
-
-    @Override public Set<Relationship> getRelationships()
-    {
-        return relationships;
-    }
-
-    @Override public List<PropertyDescriptor> getSupportedPropertyDescriptors()
-    {
-        return properties;
-    }
 }

@@ -31,6 +31,8 @@ import java.io.StringWriter;
 
   IGraphServiceClient getService();
 
+  public void refreshToken();
+
   public static String getStackTrace(Throwable e)
   {
     StringWriter sw = new StringWriter();

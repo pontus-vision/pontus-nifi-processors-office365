@@ -131,6 +131,7 @@ public class PontusMicrosoftGraphAuthControllerServiceSecretFiles
   String scope        = "https://graph.microsoft.com/.default";
 
   public IGraphServiceClient graphService;
+  public PontusMicrosoftGraphAuthProvider authProvider;
 
   @Override public List<PropertyDescriptor> getSupportedPropertyDescriptors()
   {
@@ -160,7 +161,7 @@ public class PontusMicrosoftGraphAuthControllerServiceSecretFiles
       grantType = context.getProperty(AUTH_GRANT_TYPE).getValue();
       scope = context.getProperty(AUTH_SCOPE).getValue();
 
-      PontusMicrosoftGraphAuthProvider authProvider = PontusMicrosoftGraphAuthProvider.getInstance(tenantId,
+      authProvider = PontusMicrosoftGraphAuthProvider.getInstance(tenantId,
           clientId, clientSecret, grantType, scope);
 
       graphService = GraphServiceClient.builder()
@@ -191,4 +192,8 @@ public class PontusMicrosoftGraphAuthControllerServiceSecretFiles
     return graphService;
   }
 
+  @Override public void refreshToken()
+  {
+    authProvider.refreshToken();
+  }
 }

@@ -143,6 +143,7 @@ public class PontusMicrosoftGraphMessageFolderDeltaProcessor extends AbstractPro
                 request = null;
                 String token = page.deltaLink();
                 FlowFile ff = session.create();
+                ff = session.putAttribute(ff,OFFICE365_USER_ID, userId);
                 ff = session.write(ff, out -> IOUtils.write(token, out, Charset.defaultCharset()));
                 session.transfer(ff, DELTA);
             }
@@ -204,14 +205,20 @@ public class PontusMicrosoftGraphMessageFolderDeltaProcessor extends AbstractPro
         }
         catch (Exception ex)
         {
-            getLogger().error("Unable to process", ex);
-            flowFile = session.create();
-            flowFile = session.putAllAttributes(flowFile,attributes);
+            try {
+                authProviderService.refreshToken();
+                loadFolders(userId, authProviderService.getService(), attributes, session, deltaToken);
+            }
+            catch (Exception e) {
+                getLogger().error("Unable to process", ex);
+                flowFile = session.create();
+                flowFile = session.putAllAttributes(flowFile,attributes);
 
-            flowFile = session.putAttribute(flowFile,"Office365.MessageFolderProcessor.Error", ex.getMessage());
-            flowFile = session.putAttribute(flowFile,"Office365.MessageFolderProcessor.StackTrace", getStackTrace(ex));
+                flowFile = session.putAttribute(flowFile,"Office365.MessageFolderProcessor.Error", ex.getMessage());
+                flowFile = session.putAttribute(flowFile,"Office365.MessageFolderProcessor.StackTrace", getStackTrace(ex));
 
-            session.transfer(flowFile, FAILURE);
+                session.transfer(flowFile, FAILURE);
+            }
         }
 
     }

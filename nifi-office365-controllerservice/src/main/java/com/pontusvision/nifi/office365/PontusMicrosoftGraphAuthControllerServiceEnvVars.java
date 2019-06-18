@@ -127,6 +127,7 @@ public class PontusMicrosoftGraphAuthControllerServiceEnvVars
   String scope        = "https://graph.microsoft.com/.default";
 
   public IGraphServiceClient graphService;
+  public PontusMicrosoftGraphAuthProvider authProvider;
 
   @Override public List<PropertyDescriptor> getSupportedPropertyDescriptors()
   {
@@ -147,7 +148,7 @@ public class PontusMicrosoftGraphAuthControllerServiceEnvVars
 
     try
     {
-      PontusMicrosoftGraphAuthProvider authProvider = PontusMicrosoftGraphAuthProvider.getInstance(tenantId,
+      authProvider = PontusMicrosoftGraphAuthProvider.getInstance(tenantId,
           clientId, clientSecret, grantType, scope);
 
       graphService = GraphServiceClient.builder()
@@ -178,4 +179,8 @@ public class PontusMicrosoftGraphAuthControllerServiceEnvVars
     return graphService;
   }
 
+  @Override public void refreshToken()
+  {
+    authProvider.refreshToken();
+  }
 }

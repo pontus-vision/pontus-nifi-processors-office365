@@ -99,6 +99,7 @@ import java.util.List;
   String scope        = "https://graph.microsoft.com/.default";
 
   public IGraphServiceClient graphService;
+  public PontusMicrosoftGraphAuthProvider authProvider;
 
   @Override public List<PropertyDescriptor> getSupportedPropertyDescriptors()
   {
@@ -119,7 +120,7 @@ import java.util.List;
 
     try
     {
-      PontusMicrosoftGraphAuthProvider authProvider = PontusMicrosoftGraphAuthProvider.getInstance(tenantId,
+      authProvider = PontusMicrosoftGraphAuthProvider.getInstance(tenantId,
           clientId, clientSecret, grantType, scope);
 
       graphService = GraphServiceClient.builder()
@@ -146,4 +147,8 @@ import java.util.List;
     return graphService;
   }
 
+  @Override public void refreshToken()
+  {
+    authProvider.refreshToken();
+  }
 }

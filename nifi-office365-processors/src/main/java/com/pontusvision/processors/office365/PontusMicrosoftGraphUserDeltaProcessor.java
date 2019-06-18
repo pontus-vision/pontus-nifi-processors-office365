@@ -7,7 +7,6 @@ import com.microsoft.graph.requests.extensions.IUserDeltaCollectionRequest;
 import com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface;
 import org.apache.commons.io.IOUtils;
 import org.apache.nifi.annotation.behavior.DynamicProperty;
-import org.apache.nifi.annotation.behavior.WritesAttributes;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
@@ -22,17 +21,17 @@ import org.apache.nifi.processor.util.StandardValidators;
 import java.nio.charset.Charset;
 import java.util.*;
 
-@Tags({ "GRAPH", "User", "Microsoft", "Office 365" }) @CapabilityDescription("Gets Office users, and adds the userID for each user"
+@Tags({"GRAPH", "User", "Microsoft", "Office 365"})
+@CapabilityDescription("Gets Office users, and adds the userID for each user"
         + " in the office365_user_id flow file attribute")
 @DynamicProperty(name = "Generated FlowFile attribute name", value = "Generated FlowFile attribute value",
         expressionLanguageScope = ExpressionLanguageScope.VARIABLE_REGISTRY,
         description = "Specifies an attribute on generated FlowFiles defined by the Dynamic Property's key and value." +
                 " If Expression Language is used, evaluation will be performed only once per batch of generated FlowFiles.")
-public class PontusMicrosoftGraphUserDeltaProcessor extends AbstractProcessor
-{
+public class PontusMicrosoftGraphUserDeltaProcessor extends AbstractProcessor {
 
     private List<PropertyDescriptor> properties;
-    private Set<Relationship>        relationships;
+    private Set<Relationship> relationships;
 
     public static final String OFFICE365_USER_ID = "office365_user_id";
     private String userFields = null;
@@ -69,8 +68,8 @@ public class PontusMicrosoftGraphUserDeltaProcessor extends AbstractProcessor
     public static final Relationship DELTA = new Relationship.Builder().name("Delta")
             .description("Delta relationship").build();
 
-    @Override public void init(final ProcessorInitializationContext context)
-    {
+    @Override
+    public void init(final ProcessorInitializationContext context) {
         List<PropertyDescriptor> properties = new ArrayList<>();
         properties.add(USER_FIELDS);
         properties.add(SERVICE);
@@ -86,12 +85,11 @@ public class PontusMicrosoftGraphUserDeltaProcessor extends AbstractProcessor
         this.relationships = Collections.unmodifiableSet(relationships);
     }
 
-    public static void writeFlowFile (FlowFile flowFile, ProcessSession session, User user)
-    {
+    public static void writeFlowFile(FlowFile flowFile, ProcessSession session, User user) {
         FlowFile ff = session.create(flowFile);
         final String data = user.getRawObject().toString();
         ff = session.write(ff, out -> IOUtils.write(data, out, Charset.defaultCharset()));
-        ff = session.putAttribute(ff,OFFICE365_USER_ID, user.id);
+        ff = session.putAttribute(ff, OFFICE365_USER_ID, user.id);
         session.transfer(ff, SUCCESS);
     }
 
@@ -100,8 +98,7 @@ public class PontusMicrosoftGraphUserDeltaProcessor extends AbstractProcessor
      * Load users
      */
     private void loadUsers(IGraphServiceClient graphClient, FlowFile flowFile, ProcessSession session,
-                           String deltaToken) throws Exception
-    {
+                           String deltaToken) throws Exception {
         IUserDeltaCollectionRequest request;
 
         if (deltaToken != null) {
@@ -116,64 +113,55 @@ public class PontusMicrosoftGraphUserDeltaProcessor extends AbstractProcessor
                     .select(userFields);
         }
 
-        do
-        {
-            IUserDeltaCollectionPage page  = request.get();
-            List<User>               users = page.getCurrentPage();
+        do {
+            IUserDeltaCollectionPage page = request.get();
+            List<User> users = page.getCurrentPage();
 
-            if (users != null && !users.isEmpty())
-            {
-                for (User user : users)
-                {
+            if (users != null && !users.isEmpty()) {
+                for (User user : users) {
                     writeFlowFile(flowFile, session, user);
                 }
             }
 
             // Get next page request
-            if (page.getNextPage() != null)
-            {
+            if (page.getNextPage() != null) {
                 request = page.getNextPage().buildRequest();
-            }
-            else
-            {
+            } else {
                 request = null;
                 String token = page.deltaLink();
-                FlowFile ff = session.create(flowFile);
-                ff = session.write(ff, out -> IOUtils.write(token, out, Charset.defaultCharset()));
-                session.transfer(ff, DELTA);
-
+                if (!token.equals(deltaToken)) {
+                    FlowFile ff = session.create(flowFile);
+                    ff = session.write(ff, out -> IOUtils.write(token, out, Charset.defaultCharset()));
+                    session.transfer(ff, DELTA);
+                }
             }
         }
         while (request != null);
 
     }
 
-    @Override public void onPropertyModified(final PropertyDescriptor descriptor, final String oldValue,
-                                             final String newValue)
-    {
-        if (descriptor.equals(USER_FIELDS))
-        {
+    @Override
+    public void onPropertyModified(final PropertyDescriptor descriptor, final String oldValue,
+                                   final String newValue) {
+        if (descriptor.equals(USER_FIELDS)) {
             userFields = newValue;
         }
-        if (descriptor.equals(DELTA_FIELD_NAME))
-        {
+        if (descriptor.equals(DELTA_FIELD_NAME)) {
             deltaField = newValue;
         }
         authProviderService = null;
     }
 
-    @Override public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException
-    {
-        final ComponentLog log      = this.getLogger();
-        FlowFile           flowFile = session.get();
+    @Override
+    public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException {
+        final ComponentLog log = this.getLogger();
+        FlowFile flowFile = session.get();
 
-        if (flowFile == null)
-        {
+        if (flowFile == null) {
             return;
         }
 
-        if (authProviderService == null)
-        {
+        if (authProviderService == null) {
             authProviderService = context.getProperty(SERVICE)
                     .asControllerService(
                             PontusMicrosoftGraphAuthControllerServiceInterface.class);
@@ -189,25 +177,28 @@ public class PontusMicrosoftGraphUserDeltaProcessor extends AbstractProcessor
         String deltaToken = flowFile.getAttribute(deltaField);
 
 
-        try
-        {
+        try {
             loadUsers(authProviderService.getService(), flowFile, session, deltaToken);
             session.transfer(flowFile, ORIGINAL);
-        }
-        catch (Exception ex)
-        {
-            getLogger().error("Unable to process", ex);
-            session.transfer(flowFile, FAILURE);
+        } catch (Exception ex) {
+            try {
+                authProviderService.refreshToken();
+                loadUsers(authProviderService.getService(), flowFile, session, deltaToken);
+                session.transfer(flowFile, ORIGINAL);
+            } catch (Exception e) {
+                getLogger().error("Unable to process", ex);
+                session.transfer(flowFile, FAILURE);
+            }
         }
     }
 
-    @Override public Set<Relationship> getRelationships()
-    {
+    @Override
+    public Set<Relationship> getRelationships() {
         return relationships;
     }
 
-    @Override public List<PropertyDescriptor> getSupportedPropertyDescriptors()
-    {
+    @Override
+    public List<PropertyDescriptor> getSupportedPropertyDescriptors() {
         return properties;
     }
 

@@ -141,9 +141,11 @@ public class PontusMicrosoftGraphAuthControllerServiceSecretFiles
   public static String readDataFromFileProperty(ConfigurationContext context, PropertyDescriptor prop)
       throws IOException
   {
-    return new String(
+    String val = new  String(
         Files.readAllBytes(Paths.get(context.getProperty(prop).getValue())),
         Charset.defaultCharset());
+
+    return val.trim();
   }
 
   /**

@@ -26,7 +26,11 @@ import static com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthController
 import static com.pontusvision.processors.office365.PontusMicrosoftGraphMessageFolderDeltaProcessor.OFFICE365_FOLDER_ID;
 import static com.pontusvision.processors.office365.PontusMicrosoftGraphUserProcessor.OFFICE365_USER_ID;
 
-@Tags({ "GRAPH", "Message", "Microsoft", "Office 365" }) @CapabilityDescription("Get messages")
+@Tags({ "GRAPH", "Message", "Microsoft", "Office 365", "email", "mail" })
+@CapabilityDescription("This processor gets e-mail messages and attachments from office 365 users.  To ensure that only "
+    + "messages that have not been processed before are sent, this processor will only look at entries in a distributed "
+    + "map cache whose keys match the regular expression given in the 'Cache Filter Regex' property.  These keys "
+    + "should have the following pattern:  O365_messages|<user id>|<folder id> for this to work.")
 
 public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGraphBaseProcessor
 {
@@ -34,7 +38,11 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
 
     final static PropertyDescriptor MESSAGE_FIELDS = new PropertyDescriptor.Builder()
             .name("Message Fields").defaultValue(
-                    "id,createdDateTime,lastModifiedDateTime,changeKey,categories,receivedDateTime,sentDateTime,hasAttachments,internetMessageId,subject,bodyPreview,importance,parentFolderId,conversationId,isDeliveryReceiptRequested,isReadReceiptRequested,isRead,isDraft,webLink,inferenceClassification,body,sender,from,toRecipients,ccRecipients,bccRecipients,replyTo,flag")
+                    "id,createdDateTime,lastModifiedDateTime,changeKey,categories,receivedDateTime,"
+                        + "sentDateTime,hasAttachments,internetMessageId,subject,bodyPreview,importance,parentFolderId,"
+                        + "conversationId,isDeliveryReceiptRequested,isReadReceiptRequested,isRead,isDraft,webLink,"
+                        + "inferenceClassification,body,sender,from,toRecipients,ccRecipients,"
+                        + "bccRecipients,replyTo,flag")
             .description("Message Fields to return from the Office 365 Graph API for Emails.  "
                     + "If left blank, this will return all fields.  Examples: subject,body.content,sender,from,"
                     + "toRecipients,ccRecipients").addValidator(StandardValidators.NON_BLANK_VALIDATOR).required(true)
@@ -56,6 +64,7 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
         super.init(context);
 
         List<PropertyDescriptor> properties = new ArrayList<>(this.properties);
+
         properties.add(MESSAGE_FIELDS);
 
         this.properties = Collections.unmodifiableList(properties);
@@ -106,7 +115,7 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
      * Load Messages
      */
     private void loadMessages(String userId, String folderId, IGraphServiceClient graphClient,
-                              FlowFile flowFile, ProcessSession session, String delta) throws Exception
+                              Map<String,String> attributes, ProcessSession session, String delta) throws Exception
     {
         IMessageDeltaCollectionRequest request;
         if (delta != null && delta.trim().length() > 0) {
@@ -137,7 +146,8 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
             {
                 for (Message message : messages)
                 {
-                    FlowFile ff = session.create(flowFile);
+                    FlowFile ff = session.create();
+                    ff = session.putAllAttributes(ff, attributes);
                     loadAttachments(userId, message, graphClient, ff, session);
                     ff = session.putAttribute(ff, OFFICE365_USER_ID, userId);
                     ff = session.putAttribute(ff, OFFICE365_FOLDER_ID, folderId);
@@ -154,14 +164,17 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
             }
             else
             {
-                request = null;
+                request = null; 
                 String deltaLink = page.deltaLink();
                 if (!deltaLink.equals(delta)) {
-                    FlowFile ff = session.create(flowFile);
+                    FlowFile ff = session.create();
+                    ff = session.putAllAttributes(ff,attributes);
                     ff = session.putAttribute(ff, OFFICE365_DELTA_VALUE, deltaLink);
                     ff = session.putAttribute(ff, OFFICE365_DELTA_KEY,
                             String.format(OFFICE365_DELTA_KEY_FORMAT_MESSAGE, userId, folderId));
                     writeFlowFile(ff, session, deltaLink, SUCCESS_MESSAGES);
+                    session.commit();
+
                 }
             }
         }
@@ -181,31 +194,46 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
     @Override public void onTrigger(final ProcessContext context, final ProcessSession session) throws ProcessException
     {
         FlowFile flowFile = session.get();
+        Map<String,String> attributes;
+
         if (flowFile == null)
         {
-            flowFile = session.create();
+            attributes = new HashMap<>();
+        }
+        else
+        {
+            attributes = flowFile.getAttributes();
+            session.remove(flowFile);
+
         }
 
-        session.remove(flowFile);
 
         try
         {
             Set<String> keys = cacheClient.keySet(deserializer);
 
-            long counter = 0;
 
             for (String key : keys)
             {
                 if (cacheFilterRegex.matcher(key).matches())
                 {
-                    counter++;
-                    process(context, session, flowFile, key, cacheClient.get(key, serializer, deserializer));
+                    String[] fields = key.split(Pattern.quote("|"));
+                    String userId = fields[1];
+                    String folderId = fields[2];
+
+                    try
+                    {
+                        loadMessages(userId, folderId, authProviderService.getService(), attributes, session, cacheClient.get(key, serializer, deserializer));
+                    }
+                    catch (Exception ex)
+                    {
+                        authProviderService.refreshToken();
+                        loadMessages(userId, folderId, authProviderService.getService(), attributes, session, cacheClient.get(key, serializer, deserializer));
+                    }
+
                 }
             }
-            if (counter == 0)
-            {
-                process(context, session, flowFile);
-            }
+
 
 //            session.transfer(flowFile, ORIGINAL);
         }
@@ -213,7 +241,7 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
         {
             getLogger().error("Unable to process", ex);
 
-            session.remove(flowFile);
+//            session.remove(flowFile);
 
             flowFile = session.create();
             flowFile = session.putAttribute(flowFile, "Office365.Error", ex.getMessage());
@@ -224,20 +252,7 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
 
     @Override
     public void process(ProcessContext context, ProcessSession session, FlowFile flowFile, String key, String delta) throws Exception {
-
-        String[] fields = key.split(Pattern.quote("|"));
-        String userId = fields[1];
-        String folderId = fields[2];
-
-        try
-        {
-            loadMessages(userId, folderId, authProviderService.getService(), flowFile, session, delta);
-        }
-        catch (Exception ex)
-        {
-            authProviderService.refreshToken();
-            loadMessages(userId, folderId, authProviderService.getService(), flowFile, session, delta);
-        }
+         // no-op
     }
 
 }

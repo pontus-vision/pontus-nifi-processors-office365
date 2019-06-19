@@ -93,6 +93,9 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
                 for (Attachment attachment : attachments)
                 {
                     FlowFile ff = session.create(flowFile);
+                    ff = session.putAttribute(ff,"content-type", attachment.contentType);
+                    ff = session.putAttribute(ff,"mime.type", attachment.contentType);
+                    ff = session.putAttribute(ff,"attachment_file_name", attachment.name);
                     writeFlowFile(ff, session, attachment.getRawObject().toString(), SUCCESS_ATTACHMENTS);
                 }
             }
@@ -148,10 +151,11 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
                 {
                     FlowFile ff = session.create();
                     ff = session.putAllAttributes(ff, attributes);
-                    loadAttachments(userId, message, graphClient, ff, session);
                     ff = session.putAttribute(ff, OFFICE365_USER_ID, userId);
                     ff = session.putAttribute(ff, OFFICE365_FOLDER_ID, folderId);
                     ff = session.putAttribute(ff, OFFICE365_MESSAGE_ID,  message.id);
+
+                    loadAttachments(userId, message, graphClient, ff, session);
                     writeFlowFile(ff, session, message.getRawObject().toString(), SUCCESS_MESSAGES);
                     session.commit();
                 }

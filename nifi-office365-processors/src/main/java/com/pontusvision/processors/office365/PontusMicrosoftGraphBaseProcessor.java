@@ -8,11 +8,14 @@ import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
 import org.apache.nifi.annotation.lifecycle.OnStopped;
 import org.apache.nifi.components.PropertyDescriptor;
+import org.apache.nifi.components.ValidationResult;
+import org.apache.nifi.components.Validator;
 import org.apache.nifi.distributed.cache.client.Deserializer;
 import org.apache.nifi.distributed.cache.client.DistributedMapCacheClient;
 import org.apache.nifi.distributed.cache.client.Serializer;
 import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.flowfile.FlowFile;
+import org.apache.nifi.logging.ComponentLog;
 import org.apache.nifi.processor.*;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
@@ -32,15 +35,24 @@ import static com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthController
         " If Expression Language is used, evaluation will be performed only once per batch of generated FlowFiles.")
 abstract public class PontusMicrosoftGraphBaseProcessor extends AbstractProcessor
 {
-  public static final String OFFICE365_USER_ID                  = "office365_user_id";
-  public static final String OFFICE365_FOLDER_ID                = "office365_folder_id";
-  public static final String OFFICE365_MESSAGE_ID               = "office365_message_id";
-  public static final String OFFICE365_DELTA_VALUE              = "office365_delta";
-  public static final String OFFICE365_DELTA_KEY                = "office365_delta_key";
-  public static final String OFFICE365_CACHE_KEY                = "office365_cache_key";
-  public static final String OFFICE365_DELTA_KEY_FORMAT_MESSAGE = "O365_messages|%s|%s";
-  public static final String OFFICE365_DELTA_KEY_FORMAT_USER    = "O365_users_delta";
-  public static final String OFFICE365_DELTA_KEY_FORMAT_FOLDER  = "O365_folders|%s";
+  public static final String OFFICE365_USER_ID     = "office365_user_id";
+  public static final String OFFICE365_FOLDER_ID   = "office365_folder_id";
+  public static final String OFFICE365_MESSAGE_ID  = "office365_message_id";
+  public static final String OFFICE365_DELTA_VALUE = "office365_delta";
+  public static final String OFFICE365_DELTA_KEY   = "office365_delta_key";
+  public static final String OFFICE365_CACHE_KEY   = "office365_cache_key";
+
+  public static final String OFFICE365_DELTA_KEY_FORMAT_MESSAGE_PREFIX = "O365_messages";
+  public static final String OFFICE365_DELTA_KEY_FORMAT_USER_PREFIX    = "O365_users_delta";
+  public static final String OFFICE365_DELTA_KEY_FORMAT_FOLDER_PREFIX  = "O365_folders";
+
+  public static final String OFFICE365_DELTA_KEY_FORMAT_MESSAGE = OFFICE365_DELTA_KEY_FORMAT_MESSAGE_PREFIX + "|%s|%s";
+  public static final String OFFICE365_DELTA_KEY_FORMAT_USER    = OFFICE365_DELTA_KEY_FORMAT_USER_PREFIX;
+  public static final String OFFICE365_DELTA_KEY_FORMAT_FOLDER  = OFFICE365_DELTA_KEY_FORMAT_FOLDER_PREFIX + "|%s";
+
+  public static final String OFFICE365_REGEX_MESSAGE_DEFAULT = OFFICE365_DELTA_KEY_FORMAT_MESSAGE_PREFIX + ".*";
+  public static final String OFFICE365_REGEX_USER_DEFAULT    = OFFICE365_DELTA_KEY_FORMAT_USER_PREFIX;
+  public static final String OFFICE365_REGEX_FOLDER_DEFAULT  = OFFICE365_DELTA_KEY_FORMAT_FOLDER_PREFIX + ".*";
 
   protected List<PropertyDescriptor> properties;
   protected Set<Relationship>        relationships;
@@ -58,16 +70,66 @@ abstract public class PontusMicrosoftGraphBaseProcessor extends AbstractProcesso
       .identifiesControllerService(DistributedMapCacheClient.class)
       .build();
 
-  final static PropertyDescriptor CACHE_FILTER_REGEX = new PropertyDescriptor.Builder()
-      .name("Cache Filter Regex")
-      .defaultValue("")
-      .description("Cache filter")
+  public final static PropertyDescriptor CACHE_FILTER_REGEX_USER = new PropertyDescriptor.Builder()
+      .name("Cache Filter User Regex")
+      .defaultValue(OFFICE365_REGEX_USER_DEFAULT)
+      .description(
+          "Cache filter - this will choose which entries in the cache that will be processed by this processor")
       .addValidator(StandardValidators.REGULAR_EXPRESSION_VALIDATOR)
+      .addValidator(
+          (subject, input, context) -> input.contains(OFFICE365_DELTA_KEY_FORMAT_FOLDER_PREFIX) ?
+              Validator.VALID.validate(subject, input, context) :
+              new ValidationResult
+                  .Builder()
+                  .valid(false)
+                  .subject(subject)
+                  .input(input)
+                  .explanation("The regex must contain the string " + OFFICE365_DELTA_KEY_FORMAT_FOLDER_PREFIX)
+                  .build())
       .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
       .required(true)
       .build();
 
-  final static PropertyDescriptor SERVICE = new PropertyDescriptor.Builder()
+  public final static PropertyDescriptor CACHE_FILTER_REGEX_MESSAGE = new PropertyDescriptor.Builder()
+      .name("Cache Filter Message Regex")
+      .defaultValue(OFFICE365_REGEX_MESSAGE_DEFAULT)
+      .description(
+          "Cache filter - this will choose which entries in the cache that will be processed by this processor")
+      .addValidator(StandardValidators.REGULAR_EXPRESSION_VALIDATOR)
+      .addValidator(
+          (subject, input, context) -> input.contains(OFFICE365_DELTA_KEY_FORMAT_MESSAGE_PREFIX) ?
+              Validator.VALID.validate(subject, input, context) :
+              new ValidationResult
+                  .Builder()
+                  .valid(false)
+                  .subject(subject)
+                  .input(input)
+                  .explanation("The regex must contain the string " + OFFICE365_DELTA_KEY_FORMAT_MESSAGE_PREFIX)
+                  .build())
+      .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
+      .required(true)
+      .build();
+
+  public final static PropertyDescriptor CACHE_FILTER_REGEX_FOLDER = new PropertyDescriptor.Builder()
+      .name("Cache Filter Folder Regex")
+      .defaultValue(OFFICE365_REGEX_FOLDER_DEFAULT)
+      .description(
+          "Cache filter - this will choose which entries in the cache that will be processed by this processor")
+      .addValidator(StandardValidators.REGULAR_EXPRESSION_VALIDATOR)
+      .addValidator(
+          (subject, input, context) -> input.contains(OFFICE365_DELTA_KEY_FORMAT_FOLDER_PREFIX) ?
+              Validator.VALID.validate(subject, input, context) :
+              new ValidationResult
+                  .Builder()
+                  .valid(false)
+                  .subject(subject)
+                  .input(input)
+                  .explanation("The regex must contain the string " + OFFICE365_DELTA_KEY_FORMAT_FOLDER_PREFIX)
+                  .build())
+      .required(true)
+      .build();
+
+  public final static PropertyDescriptor SERVICE = new PropertyDescriptor.Builder()
       .name("Controller Service")
       .displayName("Controller Service")
       .description("Authentication Controller Service")
@@ -84,15 +146,17 @@ abstract public class PontusMicrosoftGraphBaseProcessor extends AbstractProcesso
   public static final Relationship FAILURE = new Relationship.Builder().name("Failure")
                                                                        .description("Failure relationship").build();
 
-  protected Serializer<String>   serializer   = (s, outputStream) -> outputStream.write(s.getBytes());
-  protected Deserializer<String> deserializer = String::new;
+  public static Serializer<String>   SER = (s, outputStream) -> outputStream.write(s.getBytes());
+  public static Deserializer<String> DES = String::new;
+
+  protected abstract PropertyDescriptor getRegexPropertyDescriptor();
 
   @Override public void init(final ProcessorInitializationContext context)
   {
     List<PropertyDescriptor> properties = new ArrayList<>();
     properties.add(SERVICE);
     properties.add(OFFICE365_DISTRIB_MAP_CACHE);
-    properties.add(CACHE_FILTER_REGEX);
+    properties.add(getRegexPropertyDescriptor());
 
     this.properties = Collections.unmodifiableList(properties);
 
@@ -113,7 +177,7 @@ abstract public class PontusMicrosoftGraphBaseProcessor extends AbstractProcesso
   @OnScheduled
   public void onScheduled(final ProcessContext context)
   {
-    cacheFilterRegexStr = context.getProperty(CACHE_FILTER_REGEX).evaluateAttributeExpressions().getValue();
+    cacheFilterRegexStr = context.getProperty(getRegexPropertyDescriptor()).evaluateAttributeExpressions().getValue();
     cacheFilterRegex = Pattern.compile(cacheFilterRegexStr);
 
     if (authProviderService == null)
@@ -141,7 +205,7 @@ abstract public class PontusMicrosoftGraphBaseProcessor extends AbstractProcesso
 
     try
     {
-      Set<String> keys = cacheClient.keySet(deserializer);
+      Set<String> keys = cacheClient.keySet(DES);
 
       long counter = 0;
 
@@ -150,7 +214,7 @@ abstract public class PontusMicrosoftGraphBaseProcessor extends AbstractProcesso
         if (cacheFilterRegex.matcher(key).matches())
         {
           counter++;
-          process(context, session, flowFile, key, cacheClient.get(key, serializer, deserializer));
+          process(context, session, flowFile, key, cacheClient.get(key, SER, DES));
         }
       }
       if (counter == 0)
@@ -162,14 +226,8 @@ abstract public class PontusMicrosoftGraphBaseProcessor extends AbstractProcesso
     }
     catch (Exception ex)
     {
-      getLogger().error("Unable to process", ex);
-
       session.remove(flowFile);
-
-      flowFile = session.create();
-      flowFile = session.putAttribute(flowFile, "Office365.Error", ex.getMessage());
-      flowFile = session.putAttribute(flowFile, "Office365.StackTrace", getStackTrace(ex));
-      session.transfer(flowFile, FAILURE);
+      handleError(getLogger(), ex, session);
     }
   }
 
@@ -180,8 +238,11 @@ abstract public class PontusMicrosoftGraphBaseProcessor extends AbstractProcesso
     authProviderService = null;
   }
 
-  abstract public void process(ProcessContext context, ProcessSession session, FlowFile flowFile, String key,
-                               String delta) throws Exception;
+  public void process(ProcessContext context, ProcessSession session, FlowFile flowFile, String key,
+                      String delta) throws Exception
+  {
+
+  }
 
   public void process(ProcessContext context, ProcessSession session, FlowFile flowFile) throws Exception
   {
@@ -197,4 +258,16 @@ abstract public class PontusMicrosoftGraphBaseProcessor extends AbstractProcesso
   {
     return properties;
   }
+
+  public static void handleError(ComponentLog logger, Exception ex, ProcessSession session)
+  {
+    logger.error("Unable to process", ex);
+
+    FlowFile flowFile = session.create();
+    flowFile = session.putAttribute(flowFile, "Office365.Error", ex.getMessage());
+    flowFile = session.putAttribute(flowFile, "Office365.StackTrace", getStackTrace(ex));
+    session.transfer(flowFile, FAILURE);
+
+  }
+
 }

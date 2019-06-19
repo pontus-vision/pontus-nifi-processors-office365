@@ -37,6 +37,11 @@ public class PontusMicrosoftGraphMessageFolderCacheProcessor extends PontusMicro
             .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
             .build();
 
+    @Override protected PropertyDescriptor getRegexPropertyDescriptor()
+    {
+        return CACHE_FILTER_REGEX_FOLDER;
+    }
+
     @Override public void init(final ProcessorInitializationContext context)
     {
         super.init(context);

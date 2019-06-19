@@ -7,8 +7,6 @@ import com.microsoft.graph.requests.extensions.IAttachmentCollectionPage;
 import com.microsoft.graph.requests.extensions.IAttachmentCollectionRequest;
 import com.microsoft.graph.requests.extensions.IMessageDeltaCollectionPage;
 import com.microsoft.graph.requests.extensions.IMessageDeltaCollectionRequest;
-import com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface;
-import org.apache.commons.io.IOUtils;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
@@ -18,13 +16,8 @@ import org.apache.nifi.processor.*;
 import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 
-import java.nio.charset.Charset;
 import java.util.*;
 import java.util.regex.Pattern;
-
-import static com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface.getStackTrace;
-import static com.pontusvision.processors.office365.PontusMicrosoftGraphMessageFolderDeltaProcessor.OFFICE365_FOLDER_ID;
-import static com.pontusvision.processors.office365.PontusMicrosoftGraphUserProcessor.OFFICE365_USER_ID;
 
 @Tags({ "GRAPH", "Message", "Microsoft", "Office 365", "email", "mail" })
 @CapabilityDescription("This processor gets e-mail messages and attachments from office 365 users.  To ensure that only "
@@ -58,6 +51,11 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
             .description(
                     "Success relationship for attachments")
             .build();
+
+    @Override protected PropertyDescriptor getRegexPropertyDescriptor()
+    {
+        return CACHE_FILTER_REGEX_MESSAGE;
+    }
 
     @Override public void init(final ProcessorInitializationContext context)
     {
@@ -214,7 +212,7 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
 
         try
         {
-            Set<String> keys = cacheClient.keySet(deserializer);
+            Set<String> keys = cacheClient.keySet(DES);
 
 
             for (String key : keys)
@@ -227,12 +225,14 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
 
                     try
                     {
-                        loadMessages(userId, folderId, authProviderService.getService(), attributes, session, cacheClient.get(key, serializer, deserializer));
+                        loadMessages(userId, folderId, authProviderService.getService(), attributes, session, cacheClient.get(key,
+                            SER, DES));
                     }
                     catch (Exception ex)
                     {
                         authProviderService.refreshToken();
-                        loadMessages(userId, folderId, authProviderService.getService(), attributes, session, cacheClient.get(key, serializer, deserializer));
+                        loadMessages(userId, folderId, authProviderService.getService(), attributes, session, cacheClient.get(key,
+                            SER, DES));
                     }
 
                 }
@@ -243,20 +243,12 @@ public class PontusMicrosoftGraphMessageCacheProcessor extends PontusMicrosoftGr
         }
         catch (Exception ex)
         {
-            getLogger().error("Unable to process", ex);
+            handleError(getLogger(),ex,session);
 
-//            session.remove(flowFile);
-
-            flowFile = session.create();
-            flowFile = session.putAttribute(flowFile, "Office365.Error", ex.getMessage());
-            flowFile = session.putAttribute(flowFile, "Office365.StackTrace", getStackTrace(ex));
-            session.transfer(flowFile, FAILURE);
         }
     }
 
-    @Override
-    public void process(ProcessContext context, ProcessSession session, FlowFile flowFile, String key, String delta) throws Exception {
-         // no-op
-    }
+
+
 
 }

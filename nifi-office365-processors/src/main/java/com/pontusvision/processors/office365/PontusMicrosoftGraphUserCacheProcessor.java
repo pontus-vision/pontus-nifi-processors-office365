@@ -33,6 +33,12 @@ public class PontusMicrosoftGraphUserCacheProcessor extends PontusMicrosoftGraph
                     + "jobTitle,mail,mobilePhone,officeLocation,preferredLanguage,surname,userPrincipalName,id"
                     + "toRecipients,ccRecipients").addValidator(StandardValidators.NON_BLANK_VALIDATOR).required(true).build();
 
+
+    @Override protected PropertyDescriptor getRegexPropertyDescriptor()
+    {
+        return CACHE_FILTER_REGEX_USER;
+    }
+
     @Override public void init(final ProcessorInitializationContext context)
     {
         super.init(context);

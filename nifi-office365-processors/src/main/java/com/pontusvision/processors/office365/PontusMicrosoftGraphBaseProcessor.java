@@ -77,14 +77,14 @@ abstract public class PontusMicrosoftGraphBaseProcessor extends AbstractProcesso
           "Cache filter - this will choose which entries in the cache that will be processed by this processor")
       .addValidator(StandardValidators.REGULAR_EXPRESSION_VALIDATOR)
       .addValidator(
-          (subject, input, context) -> input.contains(OFFICE365_DELTA_KEY_FORMAT_FOLDER_PREFIX) ?
+          (subject, input, context) -> input.contains(OFFICE365_DELTA_KEY_FORMAT_USER_PREFIX) ?
               Validator.VALID.validate(subject, input, context) :
               new ValidationResult
                   .Builder()
                   .valid(false)
                   .subject(subject)
                   .input(input)
-                  .explanation("The regex must contain the string " + OFFICE365_DELTA_KEY_FORMAT_FOLDER_PREFIX)
+                  .explanation("The regex must contain the string " + OFFICE365_DELTA_KEY_FORMAT_USER_PREFIX)
                   .build())
       .expressionLanguageSupported(ExpressionLanguageScope.FLOWFILE_ATTRIBUTES)
       .required(true)

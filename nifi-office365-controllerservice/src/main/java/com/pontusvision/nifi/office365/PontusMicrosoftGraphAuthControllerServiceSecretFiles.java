@@ -105,10 +105,10 @@ public class PontusMicrosoftGraphAuthControllerServiceSecretFiles
           .Builder()
           .name("Auth Scope")
           .description(
-              "specifies the scope URL for the authentication (leave this alone unless you know what you are doing)")
+              "Specifies the scope URL for the authentication (leave this alone unless you know what you are doing)")
           .required(true)
           .defaultValue("https://graph.microsoft.com/.default")
-          .addValidator(StandardValidators.URL_VALIDATOR)
+          .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
           .build();
 
   private static final List<PropertyDescriptor> properties;

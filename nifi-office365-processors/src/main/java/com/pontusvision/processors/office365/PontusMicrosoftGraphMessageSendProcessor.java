@@ -296,8 +296,20 @@ public class PontusMicrosoftGraphMessageSendProcessor extends AbstractProcessor
     }
     catch (Exception ex)
     {
-      getLogger().error("Unable to process", ex);
-      session.transfer(flowFile, FAILURE);
+      try
+      {
+        authProviderService.refreshToken();
+        sendMessage(userId, subject, bccRecipients, ccRecipients, toRecipients, body, bodyType, saveToSentItems,
+            importance,
+            authProviderService.getService());
+
+        session.transfer(flowFile, SUCCESS);
+
+      }
+      catch (Exception ex2)
+      {
+        PontusMicrosoftGraphBaseProcessor.handleError(getLogger(), ex2, session);
+      }
     }
 
   }

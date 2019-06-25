@@ -21,7 +21,6 @@ import org.apache.nifi.processor.util.StandardValidators;
 import java.nio.charset.Charset;
 import java.util.*;
 
-import static com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface.getStackTrace;
 import static com.pontusvision.processors.office365.PontusMicrosoftGraphUserProcessor.OFFICE365_USER_ID;
 
 @Tags({ "GRAPH", "Message", "Microsoft", "Office 365" }) @CapabilityDescription("Get messages")
@@ -214,20 +213,21 @@ public class PontusMicrosoftGraphMessageProcessor extends AbstractProcessor
       loadMessages(userId, authProviderService.getService(), attributes, session);
       //      session.transfer(flowFile, ORIGINAL);
     }
-    catch (Exception ex)
+    catch (Exception e)
     {
-      getLogger().error("Unable to process", ex);
-      flowFile = session.create();
-      flowFile = session.putAllAttributes(flowFile,attributes);
+      try
+      {
+        authProviderService.refreshToken();
+        loadMessages(userId, authProviderService.getService(), attributes, session);
 
-      flowFile = session.putAttribute(flowFile,"Office365.MessageProcessor.Error", ex.getMessage());
-      flowFile = session.putAttribute(flowFile,"Office365.MessageProcessor.StackTrace", getStackTrace(ex));
-
-      session.transfer(flowFile, FAILURE);
+      }
+      catch (Exception ex2)
+      {
+        PontusMicrosoftGraphBaseProcessor.handleError(getLogger(), ex2, session);
+      }
     }
 
   }
-
 
   @Override public Set<Relationship> getRelationships()
   {

@@ -20,11 +20,11 @@
     <parent>
         <groupId>com.pontusvision.office365</groupId>
         <artifactId>nifi-office365</artifactId>
-        <version>1.9.2</version>
+        <version>1.12.1</version>
     </parent>
 
     <artifactId>nifi-office365-processors</artifactId>
-    <version>1.9.2</version>
+    <version>1.12.1</version>
     <packaging>jar</packaging>
 
 

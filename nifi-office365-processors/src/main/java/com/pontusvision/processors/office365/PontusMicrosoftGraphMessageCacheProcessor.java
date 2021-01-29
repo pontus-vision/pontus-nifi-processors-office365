@@ -7,6 +7,7 @@ import com.microsoft.graph.requests.extensions.IAttachmentCollectionPage;
 import com.microsoft.graph.requests.extensions.IAttachmentCollectionRequest;
 import com.microsoft.graph.requests.extensions.IMessageDeltaCollectionPage;
 import com.microsoft.graph.requests.extensions.IMessageDeltaCollectionRequest;
+import com.pontusvision.processors.office365.base.PontusMicrosoftGraphBaseProcessor;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;

@@ -1,4 +1,4 @@
-package com.pontusvision.processors.office365;
+package com.pontusvision.processors.office365.base;
 
 import com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface;
 import org.apache.commons.io.IOUtils;

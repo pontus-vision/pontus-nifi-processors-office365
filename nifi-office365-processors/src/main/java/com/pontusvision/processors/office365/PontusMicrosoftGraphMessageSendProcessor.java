@@ -6,6 +6,7 @@ import com.microsoft.graph.models.generated.BodyType;
 import com.microsoft.graph.models.generated.Importance;
 import com.microsoft.graph.requests.extensions.IUserRequestBuilder;
 import com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface;
+import com.pontusvision.processors.office365.base.PontusMicrosoftGraphBaseProcessor;
 import org.apache.commons.io.IOUtils;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;

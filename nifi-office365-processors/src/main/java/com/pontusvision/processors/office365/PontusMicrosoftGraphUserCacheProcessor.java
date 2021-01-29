@@ -4,6 +4,7 @@ import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.models.extensions.User;
 import com.microsoft.graph.requests.extensions.IUserDeltaCollectionPage;
 import com.microsoft.graph.requests.extensions.IUserDeltaCollectionRequest;
+import com.pontusvision.processors.office365.base.PontusMicrosoftGraphBaseProcessor;
 import org.apache.nifi.annotation.behavior.DynamicProperty;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;

@@ -36,44 +36,49 @@ import java.util.List;
     extends AbstractControllerService implements PontusMicrosoftGraphAuthControllerServiceInterface
 {
 
-  public final static PropertyDescriptor AUTH_CLIENT_ID = new PropertyDescriptor.Builder().name("Auth client ID")
-                                                                                          .description(
-                                                                                              "specifies the Oauth2 client id")
-                                                                                          .required(true).addValidator(
-          StandardValidators.NON_BLANK_VALIDATOR)
-                                                                                          .sensitive(false).build();
+  public final static PropertyDescriptor AUTH_CLIENT_ID = new PropertyDescriptor
+    .Builder()
+    .name("Auth client ID")
+    .description("specifies the Oauth2 client id")
+    .required(true)
+    .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+    .sensitive(false)
+    .build();
 
-  public final static PropertyDescriptor AUTH_TENANT_ID = new PropertyDescriptor.Builder().name("Auth Tenant ID")
-                                                                                          .description(
-                                                                                              "specifies the Oauth2 client API Key")
-                                                                                          .required(true)
-                                                                                          .addValidator(
-                                                                                              StandardValidators.NON_BLANK_VALIDATOR)
-                                                                                          .sensitive(false).build();
+  public final static PropertyDescriptor AUTH_TENANT_ID = new PropertyDescriptor
+    .Builder().name("Auth Tenant ID")
+    .description( "specifies the Oauth2 client API Key")
+    .required(true)
+    .addValidator(  StandardValidators.NON_BLANK_VALIDATOR)
+    .sensitive(false)
+    .build();
 
-  public final static PropertyDescriptor AUTH_CLIENT_SECRET = new PropertyDescriptor.Builder()
-      .name("Auth client Secret")
-      .description("specifies the Oauth2 client Secret").required(true)
-      .sensitive(true)
-      .addValidator(StandardValidators.NON_BLANK_VALIDATOR).build();
+  public final static PropertyDescriptor AUTH_CLIENT_SECRET = new PropertyDescriptor
+    .Builder()
+    .name("Auth client Secret")
+    .description("specifies the Oauth2 client Secret")
+    .required(true)
+    .sensitive(true)
+    .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+    .build();
 
-  public final static PropertyDescriptor AUTH_GRANT_TYPE = new PropertyDescriptor.Builder().name("Auth Grant Type")
-                                                                                           .description(
-                                                                                               "specifies the Oauth2 client Secret")
-                                                                                           .required(true)
-                                                                                           .defaultValue("client_credentials")
-                                                                                           .addValidator(
-                                                                                               StandardValidators.NON_BLANK_VALIDATOR)
-                                                                                           .build();
+  public final static PropertyDescriptor AUTH_GRANT_TYPE = new PropertyDescriptor
+    .Builder()
+    .name("Auth Grant Type")
+    .description("specifies the Oauth2 Grant Type")
+    .required(true)
+    .defaultValue("client_credentials")
+    .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+    .build();
 
-  public final static PropertyDescriptor AUTH_SCOPE = new PropertyDescriptor.Builder().name("Auth Scope")
-                                                                                      .description(
-                                                                                          "specifies the Oauth2 client Secret")
-                                                                                      .required(true)
-                                                                                      .defaultValue("https://graph.microsoft.com/.default")
-                                                                                      .addValidator(
-                                                                                          StandardValidators.NON_BLANK_VALIDATOR)
-                                                                                      .build();
+  public final static PropertyDescriptor AUTH_SCOPE = new PropertyDescriptor
+    .Builder()
+    .name("Auth Scope")
+    .description("specifies the Oauth2 client Scope")
+    .required(true)
+    .defaultValue("https://graph.microsoft.com/.default")
+    .addValidator(StandardValidators.NON_BLANK_VALIDATOR)
+    .build();
 
 
   private static final List<PropertyDescriptor> properties;

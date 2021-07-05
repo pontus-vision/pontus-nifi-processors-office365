@@ -19,21 +19,43 @@
     <parent>
         <groupId>org.apache.nifi</groupId>
         <artifactId>nifi-nar-bundles</artifactId>
-        <version>1.9.2</version>
+        <version>1.13.2</version>
     </parent>
+
+<repositories>
+  <repository>
+    <snapshots>
+      <enabled>false</enabled>
+    </snapshots>
+    <id>central</id>
+    <name>bintray</name>
+    <url>https://jcenter.bintray.com</url>
+  </repository>
+</repositories>
+<pluginRepositories>
+  <pluginRepository>
+    <snapshots>
+      <enabled>false</enabled>
+    </snapshots>
+    <id>central</id>
+    <name>bintray-plugins</name>
+    <url>https://jcenter.bintray.com</url>
+  </pluginRepository>
+</pluginRepositories>
 
 
     <groupId>com.pontusvision.office365</groupId>
     <artifactId>nifi-office365</artifactId>
-    <version>1.9.2</version>
+    <version>1.13.2</version>
     <packaging>pom</packaging>
     <properties>
-        <nifi.version>1.9.2</nifi.version>
+        <nifi.version>1.13.2</nifi.version>
 
         <cometd.version>2.2.0</cometd.version>
-        <json.version>20180813</json.version>
-        <junit.version>4.12</junit.version>
+        <json.version>20201115</json.version>
+        <junit.version>4.13.1</junit.version>
         <commons-io.version>2.6</commons-io.version>
+        <slf4j.version>1.7.25</slf4j.version>
         <!--<cometd.version>3.0.9</cometd.version>-->
     </properties>
 
@@ -44,7 +66,80 @@
         <module>nifi-office365-nar</module>
     </modules>
 
-
+    <build>
+      <pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.nifi</groupId>
+                <artifactId>nifi-nar-maven-plugin</artifactId>
+                <version>1.1.0</version>
+                <extensions>true</extensions>
+            </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-enforcer-plugin</artifactId>
+            <version>3.0.0-M3</version>
+            <executions>
+              <execution>
+                <id>enforce-banned-dependencies</id>
+                <goals>
+                  <goal>enforce</goal>
+                </goals>
+                <configuration>
+                  <rules>
+                    <bannedDependencies>
+                      <excludes>
+                        <exclude>org.json</exclude>
+                      </excludes>
+                    </bannedDependencies>
+                  </rules>
+                  <fail>false</fail>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+              <artifactId>maven-compiler-plugin</artifactId>
+              <version>3.8.1</version>
+              <configuration>
+                  <source>1.8</source>
+                  <target>1.8</target>
+                  <encoding>UTF-8</encoding>
+              <fork>true</fork>
+              <optimize>true</optimize>
+              <showDeprecation>true</showDeprecation>
+              <showWarnings>true</showWarnings>
+              </configuration>
+              <dependencies>
+                  <dependency>
+                      <groupId>org.codehaus.groovy</groupId>
+                      <artifactId>groovy-eclipse-batch</artifactId>
+                      <version>2.5.14-02</version>
+                  </dependency>
+              </dependencies>
+          </plugin>
+          <plugin>
+              <groupId>org.codehaus.mojo</groupId>
+              <artifactId>versions-maven-plugin</artifactId>
+              <version>2.7</version>
+              <configuration>
+                <ignoreVersions>
+                    <ignoreVersion type="regex">.*atlassian-2</ignoreVersion>
+                    <ignoreVersion type="regex">.*Alpha2</ignoreVersion>
+                    <ignoreVersion type="regex">.*alpha1</ignoreVersion>
+                    <ignoreVersion type="regex">.*ALPHA</ignoreVersion>
+                    <ignoreVersion type="regex">.*alpha</ignoreVersion>
+                    <ignoreVersion type="regex">.*alpha[0-9]</ignoreVersion>
+                    <ignoreVersion type="regex">.*beta[0-9]</ignoreVersion>
+                    <ignoreVersion type="regex">.*beta</ignoreVersion>
+                    <ignoreVersion type="regex">.*BETA</ignoreVersion>
+                    <ignoreVersion type="regex">20030203.*</ignoreVersion>
+                </ignoreVersions>
+              </configuration>
+           </plugin>
+        </plugins>
+       </pluginManagement>
+    </build>
 
     <dependencyManagement>
         <dependencies>
@@ -53,6 +148,30 @@
                 <artifactId>nifi-office365-api</artifactId>
                 <version>${nifi.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.apache.nifi</groupId>
+                <artifactId>nifi-standard-services-api-nar</artifactId>
+                <version>${nifi.version}</version>
+                <type>nar</type>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.nifi</groupId>
+                <artifactId>nifi-record-serialization-service-api</artifactId>
+                <scope>compile</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-simple</artifactId>
+                <version>${slf4j.version}</version>
+                <scope>test</scope>
+            </dependency>
+
 
             <dependency>
                 <groupId>org.apache.httpcomponents</groupId>
@@ -83,7 +202,8 @@
             <dependency>
                 <groupId>org.json</groupId>
                 <artifactId>json</artifactId>
-                <version>20180813</version>
+                <version>${json.version}</version>
+                <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>com.microsoft.graph</groupId>
@@ -105,7 +225,14 @@
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-mock</artifactId>
                 <version>${nifi.version}</version>
-
+                <exclusions>
+                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-annotations</artifactId></exclusion>
+                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-core</artifactId></exclusion>
+                    <exclusion><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId></exclusion>
+                    <exclusion><groupId>commons-codec</groupId><artifactId>commons-codec</artifactId></exclusion>
+                    <exclusion><groupId>io.swagger</groupId><artifactId>swagger-annotations</artifactId></exclusion>
+                    <exclusion><groupId>org.apache.httpcomponents</groupId><artifactId>httpcore</artifactId></exclusion>
+                </exclusions>
                 <scope>test</scope>
             </dependency>
             <dependency>
@@ -188,6 +315,12 @@
                 <version>${nifi.version}</version>
                 <scope>provided</scope>
             </dependency>
+            <!--dependency>
+                <groupId>org.codehaus.groovy</groupId>
+                <artifactId>groovy-eclipse-batch</artifactId>
+                <scope>testCompile</scope>
+                <version>2.5.14-02</version>
+            </dependency-->
 
             <dependency>
                 <groupId>junit</groupId>
@@ -204,5 +337,4 @@
 
         </dependencies>
     </dependencyManagement>
-
 </project>

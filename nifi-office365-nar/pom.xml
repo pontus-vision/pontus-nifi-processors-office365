@@ -19,7 +19,7 @@
     <parent>
         <groupId>com.pontusvision.office365</groupId>
         <artifactId>nifi-office365</artifactId>
-        <version>1.9.2</version>
+        <version>1.13.2</version>
     </parent>
 
     <artifactId>nifi-office365-nar</artifactId>
@@ -41,6 +41,11 @@
             <groupId>com.pontusvision.office365</groupId>
             <artifactId>nifi-office365-controllerservice</artifactId>
             <version>${nifi.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.nifi</groupId>
+            <artifactId>nifi-standard-services-api-nar</artifactId>
+            <type>nar</type>
         </dependency>
 
     </dependencies>

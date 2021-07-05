@@ -4,23 +4,17 @@ import com.microsoft.graph.models.extensions.IGraphServiceClient;
 import com.microsoft.graph.models.extensions.MailFolder;
 import com.microsoft.graph.requests.extensions.IMailFolderDeltaCollectionPage;
 import com.microsoft.graph.requests.extensions.IMailFolderDeltaCollectionRequest;
-import com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface;
-import org.apache.commons.io.IOUtils;
+import com.pontusvision.processors.office365.base.PontusMicrosoftGraphBaseProcessor;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.flowfile.FlowFile;
 import org.apache.nifi.processor.*;
-import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 
-import java.nio.charset.Charset;
 import java.util.*;
 import java.util.regex.Pattern;
-
-import static com.pontusvision.nifi.office365.PontusMicrosoftGraphAuthControllerServiceInterface.getStackTrace;
-import static com.pontusvision.processors.office365.PontusMicrosoftGraphUserProcessor.OFFICE365_USER_ID;
 
 @Tags({ "GRAPH", "Folder", "Microsoft", "Office 365" }) @CapabilityDescription("Get Message Folders")
 
